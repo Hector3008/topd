@@ -123,6 +123,23 @@ export function formularioDeLectura(lectura) {
   return { cabecera, lineas, total: lectura?.total ?? null, avisos: lectura?.avisos ?? [] };
 }
 
+/** Pasa una proforma guardada (GET /proformas/:code) al estado del formulario, conservando el id de cada línea. */
+export function formularioDeProforma(p) {
+  const cabecera = { ...cabeceraVacia() };
+  for (const [k, v] of Object.entries(p?.cabecera ?? {})) if (k in cabecera && v != null) cabecera[k] = String(v);
+  const lineas = (p?.lineas ?? []).map((l) => ({
+    id: l.id,
+    cantidad: l.cantidad == null ? "" : String(l.cantidad),
+    descripcion: l.descripcion ?? "",
+    precioUnitario: l.precioUnitario == null ? "" : String(l.precioUnitario),
+    comentario: l.comentario ?? "",
+    anulada: l.anulada === true,
+    dudoso: false,
+  }));
+  const pagos = (p?.pagos ?? []).map((x) => ({ cuenta: x.cuenta ?? "", monto: x.monto == null ? "" : String(x.monto), operacion: x.operacion ?? "" }));
+  return { cabecera, lineas, pagos };
+}
+
 /** Suma de las líneas no tachadas con lo que hay escrito en el formulario. */
 export const sumaDelFormulario = (lineas) =>
   Math.round(lineas.filter((l) => !l.anulada).reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0), 0) * 100) / 100;
@@ -140,7 +157,7 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }) {
       return { error: `La línea ${i + 1} necesita cantidad entera y descripción.` };
     const precio = String(l.precioUnitario ?? "").trim();
     if (precio !== "" && !(Number(precio) >= 0)) return { error: `El precio de la línea ${i + 1} no es válido.` };
-    limpias.push({ cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
+    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
   }
   if (!limpias.length) return { error: "Agrega al menos una línea." };
   const limpia = {};

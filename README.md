@@ -80,7 +80,7 @@ con `POST /proformas` (`origen: "ocr:impreso" | "ocr:manuscrito"`). `GET /ocr` d
 | `POST /revision/:code/cerrar` | `estacion:revision` | «Revisé y validé el pedido»: pasa a `cerrada` |
 | `GET /bandeja?estado=a,b` | `estacion:bandeja` | Solo lectura: todas las proformas con su avance (el front busca por código, cliente, vendedor o referencia) |
 
-El front muestra solo las pestañas a las que el rol da acceso: Nueva proforma, Almacén, Revisión y Bandeja.
+El front muestra solo las pestañas a las que el rol da acceso: Nueva proforma, Proformas, Almacén, Revisión y Bandeja.
 En Revisión hay que marcar cada línea como revisada (la marca vive en la pantalla) antes de poder cerrar; se resaltan
 las líneas faltantes, con cantidad distinta o con nota. Revisión aún no puede devolver un pedido al almacén (pendiente de decidir).
 
@@ -93,3 +93,16 @@ La cabecera de la proforma guarda: cliente (nombre, RUC/DNI, teléfono, e-mail, 
 destino, agencia, atención, canal de venta (`tienda | online | cartera`), forma de pago (`efectivo | deposito | transferencia | transferencia_y_caja | tarjeta | credito`),
 comprobante (`factura | boleta | proforma`), fecha, vendedor, despachador y la referencia del papel. Cada línea lleva un **comentario** para el almacén y el
 documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que solo salen en `GET /bandeja`. Las listas cerradas se validan en el servidor.
+
+### Editar una proforma generada (estación de creación)
+
+| Ruta | Permiso | Qué hace |
+|---|---|---|
+| `GET /proformas?estado=a,b` | `estacion:creacion` | Lista (por defecto orden_salida, orden_revision y cerrada) con `editable` y pagos |
+| `GET /proformas/:code` | `estacion:creacion` | Proforma completa (cabecera, líneas con `id`, pagos, `version`) para abrirla en el formulario |
+| `PUT /proformas/:code` | `estacion:creacion` | Guarda una **nueva versión** (la anterior queda en el núcleo). Exige `version` (la que se abrió): si otra persona cambió antes, `409 CONFLICTO_VERSION` |
+
+- Solo se edita en `borrador`, `cotizacion` y `orden_salida`; en `orden_revision` y `cerrada` responde `409 ESTADO_NO_EDITABLE`.
+- Las líneas con `id` se conservan; las sin `id` son nuevas (el id nunca se reutiliza). Lo que cambió lleva `modificadaTs` y el almacén ve «Corregida por ventas».
+- El avance del almacén se reinicia **solo** en las líneas quitadas o cuya cantidad, descripción o tachado cambió; precio y comentario no lo reinician.
+- Sin cambios reales no se crea versión. Cada edición deja el evento `proforma.editada` (estación creación).

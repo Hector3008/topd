@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
-import { SECCIONES_CABECERA, cabeceraVacia, formularioDeLectura, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
+import { SECCIONES_CABECERA, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
 
 const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
 
@@ -21,7 +21,8 @@ async function fotoReducida(archivo) {
 
 // Estación de creación: carga manual o leyendo la foto de la proforma en papel (OCR impreso o manuscrito).
 // El OCR solo rellena este formulario: nada se crea hasta que una persona lo revisa y pulsa «Crear».
-export default function NuevaProforma({ alCrear }) {
+// Con `codigo` es el mismo formulario para corregir una proforma ya generada (PUT con la versión que se abrió).
+export default function NuevaProforma({ alCrear, codigo = null, alTerminar = null }) {
   const [cabecera, setCabecera] = useState(cabeceraVacia());
   const [lineas, setLineas] = useState([vacia(), vacia(), vacia()]);
   const [pagos, setPagos] = useState([]);
@@ -35,8 +36,26 @@ export default function NuevaProforma({ alCrear }) {
   const [foto, setFoto] = useState(null); // data URL para verla al lado del formulario
   const [origen, setOrigen] = useState("manual");
   const [lectura, setLectura] = useState(null); // { total, avisos }
+  // Edición
+  const editando = codigo != null;
+  const [version, setVersion] = useState(null);
+  const [cargando, setCargando] = useState(editando);
+  const [estado, setEstado] = useState(null);
 
-  useEffect(() => { api.ocr().then((d) => setOcrActivo(d.activo), () => setOcrActivo(false)); }, []);
+  useEffect(() => {
+    if (!editando) return;
+    let vivo = true;
+    api.proformas.obtener(codigo).then((p) => {
+      if (!vivo) return;
+      const f = formularioDeProforma(p);
+      setCabecera(f.cabecera); setLineas(f.lineas.length ? f.lineas : [vacia()]); setPagos(f.pagos);
+      setVersion(p.version); setEstado(p.estado); setOrigen(p.origenCarga ?? "manual");
+      if (!p.editable) setError("Esta proforma ya salió del almacén y no se puede editar.");
+    }, (err) => vivo && setError(mensajeDeError(err))).finally(() => vivo && setCargando(false));
+    return () => { vivo = false; };
+  }, [codigo, editando]);
+
+  useEffect(() => { if (editando) return; api.ocr().then((d) => setOcrActivo(d.activo), () => setOcrActivo(false)); }, []);
 
   const cambiar = (i, campo, valor) => setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: valor, dudoso: campo === "anulada" ? l.dudoso : false } : l)));
   const suma = sumaDelFormulario(lineas);
@@ -74,6 +93,14 @@ export default function NuevaProforma({ alCrear }) {
     const r = prepararProforma({ cabecera, lineas, pagos });
     if (r.error) return setError(r.error);
     setEnviando(true); setError("");
+    if (editando) {
+      try {
+        const resp = await api.proformas.editar(codigo, { cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, version });
+        alTerminar?.({ code: codigo, ...resp });
+      } catch (err) { setError(mensajeDeError(err)); }
+      finally { setEnviando(false); }
+      return;
+    }
     try {
       const { code } = await api.proformas.crear({ cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, origen });
       setCreada(code);
@@ -84,14 +111,19 @@ export default function NuevaProforma({ alCrear }) {
 
   return (
     <section aria-labelledby="t-nueva">
-      <header className="cabecera"><h1 id="t-nueva">Nueva proforma</h1></header>
-      {creada && (
+      <header className="cabecera">
+        <h1 id="t-nueva">{editando ? `Editar ${codigo}` : "Nueva proforma"}</h1>
+        {editando && <button type="button" className="btn" onClick={() => alTerminar?.(null)}>Cancelar</button>}
+      </header>
+      {editando && estado === "orden_salida" && <p className="nota-suave">El almacén verá los cambios en unos segundos. Si cambias cantidad, descripción o tachas una línea, su búsqueda empieza de nuevo; con precio o comentario no.</p>}
+      {cargando && <p className="cargando">Cargando…</p>}
+      {!editando && creada && (
         <p className="aviso-ok" role="status">
           Creada {creada}: ya está en el almacén. {alCrear && <button type="button" className="enlace-btn" onClick={alCrear}>Ver almacén</button>}
         </p>
       )}
 
-      {ocrActivo !== false && <div className="ocr">
+      {!editando && ocrActivo !== false && <div className="ocr">
         <fieldset className="ocr__modo" disabled={leyendo}>
           <legend>¿Cómo está la proforma de papel?</legend>
           <label className="marca"><input type="radio" name="modo" checked={modo === "impreso"} onChange={() => setModo("impreso")} /> Impresa</label>
@@ -110,7 +142,7 @@ export default function NuevaProforma({ alCrear }) {
             <figcaption>Compara con el papel y corrige lo que haga falta.</figcaption>
           </figure>
         )}
-        <form onSubmit={enviar} className="form">
+        <form onSubmit={enviar} className="form" hidden={cargando}>
           {lectura?.avisos?.length > 0 && (
             <ul className="avisos" role="status">
               {lectura.avisos.map((a, i) => <li key={i}>{a.mensaje}</li>)}
@@ -157,6 +189,7 @@ export default function NuevaProforma({ alCrear }) {
                 <input className="num" type="number" min="1" inputMode="numeric" placeholder="Cant." aria-label={`Cantidad línea ${i + 1}`} value={l.cantidad} onChange={(e) => cambiar(i, "cantidad", e.target.value)} />
                 <input className="desc-in" placeholder="Descripción" aria-label={`Descripción línea ${i + 1}`} value={l.descripcion} onChange={(e) => cambiar(i, "descripcion", e.target.value)} />
                 <input className="num" type="number" min="0" step="0.01" inputMode="decimal" placeholder="P. unit." aria-label={`Precio línea ${i + 1}`} value={l.precioUnitario} onChange={(e) => cambiar(i, "precioUnitario", e.target.value)} />
+                {editando && <button type="button" className="btn" aria-label={`Quitar línea ${i + 1}`} onClick={() => setLineas((ls) => (ls.length > 1 ? ls.filter((_, j) => j !== i) : ls))}>✕</button>}
                 <label className="marca"><input type="checkbox" checked={l.anulada} onChange={(e) => cambiar(i, "anulada", e.target.checked)} /> Tachada</label>
                 <input className="coment-in" placeholder="Comentario para el almacén (opcional)" aria-label={`Comentario línea ${i + 1}`} maxLength={300} value={l.comentario} onChange={(e) => cambiar(i, "comentario", e.target.value)} />
                 {l.dudoso && <span className="chip chip--aviso">Revisar</span>}
@@ -170,8 +203,10 @@ export default function NuevaProforma({ alCrear }) {
           {descuadre && <p className="aviso-error" role="status">El papel dice S/ {lectura.total.toFixed(2)} y las líneas suman S/ {suma.toFixed(2)}: revisa cantidades y precios.</p>}
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <div className="botones">
-            {foto && <button type="button" className="btn" onClick={limpiar}>Descartar lectura</button>}
-            <button type="submit" className="btn btn--primario" disabled={enviando}>{enviando ? "Creando…" : "Crear y mandar al almacén"}</button>
+            {!editando && foto && <button type="button" className="btn" onClick={limpiar}>Descartar lectura</button>}
+            <button type="submit" className="btn btn--primario" disabled={enviando || (editando && version == null)}>
+              {editando ? (enviando ? "Guardando…" : "Guardar cambios") : enviando ? "Creando…" : "Crear y mandar al almacén"}
+            </button>
           </div>
         </form>
       </div>

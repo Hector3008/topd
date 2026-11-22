@@ -107,3 +107,4 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .form-lineas > li.dudosa { border-color: var(--aviso); }
 .form-pagos li .btn { grid-column: auto; min-width: 44px; }
 @media (max-width: 599px) { .form-pagos li { grid-template-columns: 1fr 6.5rem; } .form-pagos li .btn { grid-column: 1 / -1; justify-self: end; } }
+.tarjeta__cab .btn { margin-top: 8px; }

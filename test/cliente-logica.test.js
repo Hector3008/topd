@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -124,5 +124,23 @@ describe("front de topd: lógica", () => {
     assert.equal(r.lineas[0].comentario, "el de 24v");
     assert.deepEqual(r.pagos, [{ cuenta: "BCP Max Imp", monto: 200, operacion: "123" }]);
     assert.match(prepararProforma({ lineas: [{ cantidad: "1", descripcion: "x" }], pagos: [{ cuenta: "BCP", monto: "" }] }).error, /pago 1/);
+  });
+});
+
+describe("front de topd: editar una proforma", () => {
+  it("el formulario conserva el id de cada línea y lo devuelve al guardar", () => {
+    const f = formularioDeProforma({
+      cabecera: { cliente: "Pedalco", ruc: "20123456789", raro: "x" },
+      lineas: [{ id: "L1", cantidad: 2, descripcion: "Alternador", precioUnitario: 50, comentario: "24v" }, { id: "L3", cantidad: 1, descripcion: "Tachada", anulada: true }],
+      pagos: [{ cuenta: "BCP", monto: 100, operacion: "1" }],
+    });
+    assert.equal(f.cabecera.cliente, "Pedalco");
+    assert.equal("raro" in f.cabecera, false);
+    assert.deepEqual(f.lineas.map((l) => l.id), ["L1", "L3"]);
+    assert.equal(f.lineas[0].cantidad, "2");
+    assert.equal(f.pagos[0].monto, "100");
+    const r = prepararProforma({ cabecera: f.cabecera, lineas: [...f.lineas, { cantidad: "1", descripcion: "Nueva", precioUnitario: "", comentario: "", anulada: false }], pagos: f.pagos });
+    assert.deepEqual(r.lineas.map((l) => l.id), ["L1", "L3", undefined]);
+    assert.equal(r.lineas[0].comentario, "24v");
   });
 });

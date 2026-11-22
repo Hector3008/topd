@@ -94,6 +94,25 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       res.status(201).json({ code, estado: "orden_salida" });
     } catch (e) { responderError(e, res, next); }
   });
+  // Estación de creación: ver las proformas, abrir una y corregirla (nueva versión; el avance del almacén solo se reinicia
+  // en las líneas cuyo fondo cambió).
+  router.get("/proformas", ...deCreacion, async (req, res, next) => {
+    try {
+      const pedidos = typeof req.query.estado === "string" && req.query.estado ? req.query.estado.split(",").slice(0, 8) : ["orden_salida", "orden_revision", "cerrada"];
+      res.json({ proformas: await picking.listar({ estados: [...new Set(pedidos)], limite: 100, recientes: true, conPagos: true }) });
+    } catch (e) { responderError(e, res, next); }
+  });
+  router.get("/proformas/:code", ...deCreacion, async (req, res, next) => {
+    try { res.json(await picking.obtener({ code: req.params.code })); } catch (e) { responderError(e, res, next); }
+  });
+  router.put("/proformas/:code", ...deCreacion, async (req, res, next) => {
+    try {
+      res.json(await picking.editar({
+        code: req.params.code, cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos,
+        esperaVersion: req.body?.version, usuarioId: req.auth.usuarioId,
+      }));
+    } catch (e) { responderError(e, res, next); }
+  });
   router.get("/estado", (_req, res) => {
     res.json({ servicio: "topd", tipo: TIPO_PROFORMA.tipo, estaciones: Object.values(ESTACIONES) });
   });

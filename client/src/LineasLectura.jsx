@@ -15,6 +15,7 @@ export default function LineasLectura({ lineas, marcas = null, alMarcar = null }
           {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
           <div className="linea__estado">
             <span className={"chip chip--" + (l.picking?.estado ?? "pendiente")}>{resultadoDeLinea(l)}</span>
+            {l.modificadaTs && <span className="chip chip--aviso">Corregida por ventas</span>}
             {l.picking?.puntaje > 0 && <span className="chip">{l.picking.puntaje} pts</span>}
           </div>
           {l.picking?.nota && <p className="nota-lectura">Nota: {l.picking.nota}</p>}

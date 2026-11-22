@@ -13,6 +13,11 @@ function entorno() {
       async crear({ tipo, doc }) { const d = { tipo, code: `DP-000000${docs.size + 1}`, estado: "borrador", version: 1, createdAt: new Date(), updatedAt: new Date(), payload: { doc } }; docs.set(d.code, d); return d; },
       async obtener({ code }) { return docs.get(code) ?? null; },
       async listar({ estado }) { return [...docs.values()].filter((d) => [].concat(estado).includes(d.estado)).reverse(); },
+      async nuevaVersion({ code, doc, esperaVersion }) {
+        const d = docs.get(code);
+        if (esperaVersion !== undefined && esperaVersion !== d.version) { const e = new Error("conflicto"); e.codigo = "CONFLICTO_VERSION"; throw e; }
+        d.payload = { ...d.payload, doc }; d.version += 1; return d;
+      },
       async transicionar({ code, a, esperaVersion }) { const d = docs.get(code); if (esperaVersion !== undefined && esperaVersion !== d.version) throw new Error("conflicto"); d.estado = a; return d; },
     },
     modelos: { Evento: { async create(e) { eventos.push(e); } } },
@@ -20,6 +25,10 @@ function entorno() {
   const Picking = {
     find: (f) => ({ lean: async () => filas.filter((x) => (f.code.$in ? f.code.$in.includes(x.code) : x.code === f.code)) }),
     findOne: (f) => ({ lean: async () => filas.find((x) => x.code === f.code && x.lineaId === f.lineaId) ?? null }),
+    async deleteMany(f) {
+      const ids = f.lineaId.$in;
+      for (let i = filas.length - 1; i >= 0; i--) if (filas[i].code === f.code && ids.includes(filas[i].lineaId)) filas.splice(i, 1);
+    },
     async findOneAndUpdate(f, { $set }) {
       let x = filas.find((r) => r.code === f.code && r.lineaId === f.lineaId);
       if (!x) filas.push((x = { code: f.code, lineaId: f.lineaId }));
@@ -113,5 +122,100 @@ describe("datos heredados del siscore anterior", () => {
     await svc.crearOrden({ lineas: [{ cantidad: 1, descripcion: "x" }], pagos: [{ cuenta: "BCP", monto: 10 }] });
     assert.equal("pagos" in (await svc.activas())[0], false);
     assert.equal((await svc.listar({ conPagos: true }))[0].pagos.length, 1);
+  });
+});
+
+describe("editar una proforma generada", () => {
+  const base = [{ cantidad: 1, descripcion: "Alternador", precioUnitario: 100 }, { cantidad: 2, descripcion: "Portadiodo", precioUnitario: 10 }];
+  async function conAvance() {
+    const e = entorno();
+    const code = await e.svc.crearOrden({ cabecera: { cliente: "Pedalco" }, lineas: base, pagos: [] });
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 2 }, usuarioId: "u2" });
+    await e.svc.marcar({ code, lineaId: "L2", cambio: { estado: "no_encontrado" }, usuarioId: "u2" });
+    return { ...e, code };
+  }
+  const deLaProforma = async (svc, code) => (await svc.obtener({ code }));
+
+  it("abre la proforma completa con su versión", async () => {
+    const { svc, code } = await conAvance();
+    const p = await svc.obtener({ code });
+    assert.equal(p.version, 1);
+    assert.equal(p.editable, true);
+    assert.deepEqual(p.lineas.map((l) => l.id), ["L1", "L2"]);
+  });
+
+  it("cambiar precio o comentario conserva el avance del almacén", async () => {
+    const { svc, code, filas } = await conAvance();
+    const p = await svc.obtener({ code });
+    const r = await svc.editar({ code, esperaVersion: p.version, usuarioId: "u1", cabecera: { cliente: "Pedalco SRL" },
+      lineas: [{ ...p.lineas[0], precioUnitario: 90, comentario: "el de 24v" }, p.lineas[1]] });
+    assert.equal(r.version, 2);
+    assert.deepEqual(r.reiniciadas, []);
+    assert.equal(filas.length, 2);
+    const nuevo = await deLaProforma(svc, code);
+    assert.equal(nuevo.cabecera.cliente, "Pedalco SRL");
+    assert.ok(nuevo.lineas[0].modificadaTs);          // el almacén verá «Cambió»
+    assert.equal(nuevo.lineas[1].modificadaTs, undefined); // la que no cambió no se marca
+  });
+
+  it("cambiar cantidad o descripción reinicia solo esa línea; las demás siguen", async () => {
+    const { svc, code, filas } = await conAvance();
+    const p = await svc.obtener({ code });
+    const r = await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", lineas: [{ ...p.lineas[0], cantidad: 3 }, p.lineas[1]] });
+    assert.deepEqual(r.reiniciadas, ["L1"]);
+    assert.deepEqual(filas.map((f) => f.lineaId), ["L2"]);
+    const [act] = await svc.activas();
+    assert.equal(act.lineas[0].picking.estado, "pendiente");
+    assert.equal(act.lineas[1].picking.estado, "no_encontrado");
+  });
+
+  it("una línea quitada pierde su avance y su id no se reutiliza para otra", async () => {
+    const { svc, code, filas } = await conAvance();
+    const p = await svc.obtener({ code });
+    // quita L2 y agrega una nueva
+    await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", lineas: [p.lineas[0], { cantidad: 5, descripcion: "Escobilla" }] });
+    const nuevo = await svc.obtener({ code });
+    assert.deepEqual(nuevo.lineas.map((l) => l.id), ["L1", "L3"]);
+    assert.deepEqual(filas.map((f) => f.lineaId), ["L1"]);
+    assert.ok(nuevo.lineas[1].modificadaTs);
+  });
+
+  it("tachar una línea la saca de la búsqueda", async () => {
+    const { svc, code } = await conAvance();
+    const p = await svc.obtener({ code });
+    await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", lineas: [p.lineas[0], { ...p.lineas[1], anulada: true }] });
+    assert.equal((await svc.activas())[0].lineas.length, 1);
+  });
+
+  it("sin cambios no crea versión", async () => {
+    const { svc, code, docs } = await conAvance();
+    const p = await svc.obtener({ code });
+    const r = await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", cabecera: p.cabecera, lineas: p.lineas, pagos: p.pagos });
+    assert.equal(r.sinCambios, true);
+    assert.equal(docs.get(code).version, 1);
+  });
+
+  it("exige versión, rechaza versión vieja y estados que ya no se editan", async () => {
+    const { svc, code } = await conAvance();
+    const p = await svc.obtener({ code });
+    await falla(svc.editar({ code, lineas: p.lineas }), "VERSION_REQUERIDA");
+    await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", cabecera: { cliente: "Otro" }, lineas: p.lineas });
+    await assert.rejects(svc.editar({ code, esperaVersion: 1, usuarioId: "u1", cabecera: { cliente: "Otro 2" }, lineas: p.lineas }), (e) => e.codigo === "CONFLICTO_VERSION");
+    await svc.listoParaRevision({ code, usuarioId: "u2", permisos: [] });
+    await falla(svc.editar({ code, esperaVersion: 2, usuarioId: "u1", lineas: p.lineas }), "ESTADO_NO_EDITABLE");
+    assert.equal((await svc.obtener({ code })).editable, false);
+    await falla(svc.editar({ code: "DP-9999999", esperaVersion: 1, lineas: p.lineas }), "PROFORMA_NO_ENCONTRADA");
+  });
+
+  it("valida lo editado igual que al crear y deja un evento", async () => {
+    const { svc, code, eventos } = await conAvance();
+    const p = await svc.obtener({ code });
+    await falla(svc.editar({ code, esperaVersion: 1, lineas: [] }), "LINEAS_REQUERIDAS");
+    await falla(svc.editar({ code, esperaVersion: 1, lineas: [{ cantidad: 0, descripcion: "x" }] }), "LINEA_INVALIDA");
+    await falla(svc.editar({ code, esperaVersion: 1, cabecera: { entrega: "drone" }, lineas: p.lineas }), "CABECERA_INVALIDA");
+    await svc.editar({ code, esperaVersion: 1, usuarioId: "u1", lineas: [{ ...p.lineas[0], cantidad: 2 }, p.lineas[1]] });
+    const ev = eventos.find((e) => e.tipo === "proforma.editada");
+    assert.equal(ev.estacion, "creacion");
+    assert.deepEqual(ev.datos.reiniciadas, ["L1"]);
   });
 });

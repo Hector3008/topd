@@ -101,6 +101,7 @@ function Linea({ code, l, pisos, alCambiar }) {
       {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
       <div className="linea__estado">
         <span className={"chip chip--" + pk.estado}>{ESTADOS[pk.estado]}{pk.estado === "encontrado" && pk.piso != null ? ` · piso ${pk.piso} · ${pk.puntaje} pts` : ""}</span>
+        {l.modificadaTs && <span className="chip chip--aviso">Corregida por ventas</span>}
         {distinta && <span className="chip chip--aviso">Trajo {pk.cantidadEncontrada} de {l.cantidad}</span>}
       </div>
       <div className="botones" role="group" aria-label={`Marcar ${l.descripcion}`}>
