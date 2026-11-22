@@ -11,6 +11,7 @@ import { crearLector, ErrorOcr } from "./ocr.js";
 
 export { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 export { CAMPOS_REPUESTO } from "./catalogo.js";
+export { ENTREGAS, CANALES_VENTA, COMPROBANTES, FORMAS_PAGO } from "./picking-servicio.js";
 export { crearLector, normalizarLectura, ErrorOcr, MODOS_OCR } from "./ocr.js";
 export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./picking.js";
 
@@ -71,9 +72,25 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   router.post("/picking/:code/listo", ...deProduccion, async (req, res, next) => {
     try { res.json(await picking.listoParaRevision({ code: req.params.code, ...quien(req) })); } catch (e) { responderError(e, res, next); }
   });
+  // Revisión (despacho): valida el pedido que armó el almacén y lo cierra.
+  const deRevision = [autenticar(), requierePermiso(ESTACIONES.revision), eventos.middleware({ estacion: "revision" })];
+  router.get("/revision", ...deRevision, async (_req, res, next) => {
+    try { res.json({ puntajesPiso, proformas: await picking.listar({ estados: ["orden_revision"] }) }); } catch (e) { responderError(e, res, next); }
+  });
+  router.post("/revision/:code/cerrar", ...deRevision, async (req, res, next) => {
+    try { res.json(await picking.cerrar({ code: req.params.code, ...quien(req) })); } catch (e) { responderError(e, res, next); }
+  });
+  // Bandeja: solo lectura de todo lo que pasa (filtro opcional ?estado=a,b).
+  const deBandeja = [autenticar(), requierePermiso(ESTACIONES.bandeja), eventos.middleware({ estacion: "bandeja" })];
+  router.get("/bandeja", ...deBandeja, async (req, res, next) => {
+    try {
+      const estados = typeof req.query.estado === "string" && req.query.estado ? req.query.estado.split(",").slice(0, 8) : Object.keys(TIPO_PROFORMA.permisos).concat("borrador", "orden_salida", "orden_revision");
+      res.json({ puntajesPiso, proformas: await picking.listar({ estados: [...new Set(estados)], limite: 100, recientes: true, conPagos: true }) });
+    } catch (e) { responderError(e, res, next); }
+  });
   router.post("/proformas", ...deCreacion, async (req, res, next) => {
     try {
-      const code = await picking.crearOrden({ cabecera: req.body?.cabecera, lineas: req.body?.lineas, origen: req.body?.origen, ...quien(req) });
+      const code = await picking.crearOrden({ cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos, origen: req.body?.origen, ...quien(req) });
       res.status(201).json({ code, estado: "orden_salida" });
     } catch (e) { responderError(e, res, next); }
   });

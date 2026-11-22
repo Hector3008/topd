@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ErrorApi, mensajeDeError, urlCuenta } from "./api.js";
-import { puedeAlmacen, puedeCrear } from "./logica.js";
+import { puedeAlmacen, puedeBandeja, puedeCrear, puedeRevisar } from "./logica.js";
 import Almacen from "./Almacen.jsx";
 import NuevaProforma from "./NuevaProforma.jsx";
+import Revision from "./Revision.jsx";
+import Bandeja from "./Bandeja.jsx";
 
 // Sin enrutador (como tobt y cuenta): la vista sale del estado. Sin sesión, sin empresa o con contraseña temporal
 // se manda a `cuenta`, que lo resuelve.
@@ -10,7 +12,7 @@ export default function App() {
   const [yo, setYo] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [problema, setProblema] = useState(null); // { texto, irACuenta }
-  const [vista, setVista] = useState(location.hash === "#nueva" ? "nueva" : "almacen");
+  const [vista, setVista] = useState(["nueva", "almacen", "revision", "bandeja"].find((v) => location.hash === `#${v}`) ?? null);
 
   const cargarYo = useCallback(async () => {
     try {
@@ -28,7 +30,7 @@ export default function App() {
 
   useEffect(() => { cargarYo(); }, [cargarYo]);
 
-  const ir = (v) => { setVista(v); history.replaceState(null, "", v === "nueva" ? "#nueva" : location.pathname + location.search); };
+  const ir = (v) => { setVista(v); history.replaceState(null, "", `#${v}`); };
 
   if (cargando) return <main className="centrado"><p className="cargando">Cargando…</p></main>;
   if (problema)
@@ -43,9 +45,13 @@ export default function App() {
       </main>
     );
 
-  const almacen = puedeAlmacen(yo.permisos);
-  const crear = puedeCrear(yo.permisos);
-  if (!almacen && !crear)
+  const estaciones = [
+    ["nueva", "Nueva proforma", puedeCrear(yo.permisos)],
+    ["almacen", "Almacén", puedeAlmacen(yo.permisos)],
+    ["revision", "Revisión", puedeRevisar(yo.permisos)],
+    ["bandeja", "Bandeja", puedeBandeja(yo.permisos)],
+  ].filter(([, , ok]) => ok);
+  if (!estaciones.length)
     return (
       <main className="centrado">
         <section className="aviso-pantalla">
@@ -55,19 +61,24 @@ export default function App() {
       </main>
     );
 
-  const actual = vista === "nueva" && crear ? "nueva" : almacen ? "almacen" : "nueva";
+  // La vista elegida si tiene permiso; si no, la primera estación del rol (almacén antes que crear, para quien hace las dos)
+  const orden = ["almacen", "revision", "bandeja", "nueva"];
+  const actual = estaciones.some(([k]) => k === vista) ? vista : orden.find((k) => estaciones.some(([e]) => e === k));
   return (
     <main className="app">
       <nav className="barra" aria-label="Navegación">
         <a className="enlace" href={urlCuenta}>← Inicio</a>
         <span className="pestanas">
-          {almacen && <button type="button" className={"pestana" + (actual === "almacen" ? " activa" : "")} onClick={() => ir("almacen")}>Almacén</button>}
-          {crear && <button type="button" className={"pestana" + (actual === "nueva" ? " activa" : "")} onClick={() => ir("nueva")}>Nueva proforma</button>}
+          {estaciones.map(([k, nombre]) => (
+            <button key={k} type="button" className={"pestana" + (actual === k ? " activa" : "")} onClick={() => ir(k)}>{nombre}</button>
+          ))}
         </span>
         {yo.empresa?.nombre && <span className="empresa">{yo.empresa.nombre}</span>}
       </nav>
       {actual === "almacen" && <Almacen />}
-      {actual === "nueva" && <NuevaProforma alCrear={almacen ? () => ir("almacen") : null} />}
+      {actual === "revision" && <Revision />}
+      {actual === "bandeja" && <Bandeja />}
+      {actual === "nueva" && <NuevaProforma alCrear={estaciones.some(([k]) => k === "almacen") ? () => ir("almacen") : null} />}
     </main>
   );
 }

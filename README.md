@@ -71,3 +71,25 @@ con `POST /proformas` (`origen: "ocr:impreso" | "ocr:manuscrito"`). `GET /ocr` d
 - Tope de gasto: 30 lecturas por persona y hora (`crearLector({ limitePorHora })`).
 - La foto no se guarda. Cada modo tiene su motor (`crearLector({ motores: { impreso: ... } })`), para cambiar el impreso
   por un OCR gratuito si las fotos de muestra lo justifican.
+
+### Revisión y bandeja (front de las cuatro estaciones)
+
+| Ruta | Permiso | Qué hace |
+|---|---|---|
+| `GET /revision` | `estacion:revision` | Proformas en `orden_revision`, con lo que pasó en cada línea |
+| `POST /revision/:code/cerrar` | `estacion:revision` | «Revisé y validé el pedido»: pasa a `cerrada` |
+| `GET /bandeja?estado=a,b` | `estacion:bandeja` | Solo lectura: todas las proformas con su avance (el front busca por código, cliente, vendedor o referencia) |
+
+El front muestra solo las pestañas a las que el rol da acceso: Nueva proforma, Almacén, Revisión y Bandeja.
+En Revisión hay que marcar cada línea como revisada (la marca vive en la pantalla) antes de poder cerrar; se resaltan
+las líneas faltantes, con cantidad distinta o con nota. Revisión aún no puede devolver un pedido al almacén (pendiente de decidir).
+
+La cabecera admite una **referencia** opcional (`cabecera.referencia`): el N.º de la proforma de papel o del sistema anterior, para enlazar
+la proforma de topd (`DP-000000x`, que corre en paralelo a las de hoy) con lo que se trabaja a mano. El OCR la rellena si el papel la trae.
+
+### Campos heredados del siscore anterior
+
+La cabecera de la proforma guarda: cliente (nombre, RUC/DNI, teléfono, e-mail, dirección, provincia, ciudad), entrega (`tienda | agencia | local`),
+destino, agencia, atención, canal de venta (`tienda | online | cartera`), forma de pago (`efectivo | deposito | transferencia | transferencia_y_caja | tarjeta | credito`),
+comprobante (`factura | boleta | proforma`), fecha, vendedor, despachador y la referencia del papel. Cada línea lleva un **comentario** para el almacén y el
+documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que solo salen en `GET /bandeja`. Las listas cerradas se validan en el servidor.

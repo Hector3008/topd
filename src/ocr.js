@@ -1,4 +1,5 @@
-// Lectura de proformas en papel (corte B). El OCR es SOLO una herramienta para cargar proformas: lee la foto y
+// Lectura de proformas en papel (corte B). La proforma de topd lleva su propio código DP-000000x (corre en paralelo a
+// las de papel de hoy); el N.º preimpreso del papel se lee como `referencia` OPCIONAL, para poder enlazarlas después. El OCR es SOLO una herramienta para cargar proformas: lee la foto y
 // devuelve un JSON que la estación de creación muestra para revisar. Nunca crea nada por sí solo.
 //
 // Dos modos con el MISMO contrato de salida:
@@ -55,9 +56,10 @@ export const ESQUEMA_LECTURA = {
     cabecera: {
       type: "object",
       properties: {
-        numero: { type: ["string", "null"], description: "N.º preimpreso de la proforma" },
+        referencia: { type: ["string", "null"], description: "N.º preimpreso de la proforma de papel, si lo tiene" },
         agencia: { type: ["string", "null"] },
         cliente: { type: ["string", "null"] },
+        ruc: { type: ["string", "null"], description: "RUC o DNI del cliente" },
         direccion: { type: ["string", "null"] },
         ciudad: { type: ["string", "null"] },
         fecha: { type: ["string", "null"] },
@@ -106,7 +108,7 @@ export function normalizarLectura(crudo) {
   const total = num(crudo?.total);
   const fecha = typeof c.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fecha) ? c.fecha : null;
   const cabecera = {
-    numero: txt(c.numero), agencia: txt(c.agencia), cliente: txt(c.cliente), direccion: txt(c.direccion),
+    referencia: txt(c.referencia), agencia: txt(c.agencia), cliente: txt(c.cliente), ruc: txt(c.ruc), direccion: txt(c.direccion),
     ciudad: txt(c.ciudad), fecha, formaPago: ["efectivo", "deposito", "credito"].includes(c.forma_pago ?? c.formaPago) ? (c.forma_pago ?? c.formaPago) : null,
     vendedor: txt(c.vendedor), despachador: txt(c.despachador),
   };

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
-import { CAMPOS_CABECERA, cabeceraVacia, formularioDeLectura, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
+import { SECCIONES_CABECERA, cabeceraVacia, formularioDeLectura, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
 
-const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", anulada: false, dudoso: false });
-const FORMAS_PAGO = [["", "—"], ["efectivo", "Efectivo"], ["deposito", "Depósito"], ["credito", "Crédito"]];
+const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
 
 // Reduce la foto en el teléfono (lado mayor 1600 px, JPEG): se lee igual y viaja en una fracción del peso.
 async function fotoReducida(archivo) {
@@ -25,6 +24,7 @@ async function fotoReducida(archivo) {
 export default function NuevaProforma({ alCrear }) {
   const [cabecera, setCabecera] = useState(cabeceraVacia());
   const [lineas, setLineas] = useState([vacia(), vacia(), vacia()]);
+  const [pagos, setPagos] = useState([]);
   const [error, setError] = useState("");
   const [creada, setCreada] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -66,16 +66,16 @@ export default function NuevaProforma({ alCrear }) {
   }
 
   function limpiar() {
-    setCabecera(cabeceraVacia()); setLineas([vacia(), vacia(), vacia()]); setFoto(null); setLectura(null); setOrigen("manual");
+    setCabecera(cabeceraVacia()); setLineas([vacia(), vacia(), vacia()]); setPagos([]); setFoto(null); setLectura(null); setOrigen("manual");
   }
 
   async function enviar(e) {
     e.preventDefault();
-    const r = prepararProforma({ cabecera, lineas });
+    const r = prepararProforma({ cabecera, lineas, pagos });
     if (r.error) return setError(r.error);
     setEnviando(true); setError("");
     try {
-      const { code } = await api.proformas.crear({ cabecera: r.cabecera, lineas: r.lineas, origen });
+      const { code } = await api.proformas.crear({ cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, origen });
       setCreada(code);
       limpiar();
     } catch (err) { setError(mensajeDeError(err)); }
@@ -91,18 +91,17 @@ export default function NuevaProforma({ alCrear }) {
         </p>
       )}
 
-      <div className="ocr">
+      {ocrActivo !== false && <div className="ocr">
         <fieldset className="ocr__modo" disabled={leyendo}>
           <legend>¿Cómo está la proforma de papel?</legend>
           <label className="marca"><input type="radio" name="modo" checked={modo === "impreso"} onChange={() => setModo("impreso")} /> Impresa</label>
           <label className="marca"><input type="radio" name="modo" checked={modo === "manuscrito"} onChange={() => setModo("manuscrito")} /> Escrita a mano</label>
         </fieldset>
-        <label className={"btn btn--primario" + (leyendo || ocrActivo === false ? " btn--off" : "")}>
+        <label className={"btn btn--primario" + (leyendo ? " btn--off" : "")}>
           {leyendo ? "Leyendo la foto…" : "Leer foto de la proforma"}
-          <input type="file" accept="image/*" capture="environment" hidden disabled={leyendo || ocrActivo === false} onChange={leer} />
+          <input type="file" accept="image/*" capture="environment" hidden disabled={leyendo} onChange={leer} />
         </label>
-        {ocrActivo === false && <p className="nota-suave">La lectura de fotos aún no está activada en este servidor: carga la proforma a mano.</p>}
-      </div>
+      </div>}
 
       <div className={foto ? "revision" : ""}>
         {foto && (
@@ -117,16 +116,41 @@ export default function NuevaProforma({ alCrear }) {
               {lectura.avisos.map((a, i) => <li key={i}>{a.mensaje}</li>)}
             </ul>
           )}
-          <div className="form-cab">
-            {CAMPOS_CABECERA.map(([k, nombre]) => (
-              <label key={k}>{nombre}<input value={cabecera[k]} onChange={(e) => setCabecera({ ...cabecera, [k]: e.target.value })} maxLength={200} /></label>
-            ))}
-            <label>Forma de pago
-              <select value={cabecera.formaPago} onChange={(e) => setCabecera({ ...cabecera, formaPago: e.target.value })}>
-                {FORMAS_PAGO.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
-              </select>
-            </label>
-          </div>
+          {SECCIONES_CABECERA.map((sec) => (
+            <details key={sec.id} className="seccion" open={sec.abierta}>
+              <summary>{sec.titulo}</summary>
+              <div className="form-cab">
+                {sec.campos.map((c) => (
+                  <label key={c.k} className={c.ancho === "completo" ? "completo" : ""}>{c.n}
+                    {c.opciones ? (
+                      <select value={cabecera[c.k]} onChange={(e) => setCabecera({ ...cabecera, [c.k]: e.target.value })}>
+                        <option value="">—</option>
+                        {c.opciones.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                      </select>
+                    ) : (
+                      <input type={c.tipo ?? "text"} value={cabecera[c.k]} onChange={(e) => setCabecera({ ...cabecera, [c.k]: e.target.value })} maxLength={200} />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </details>
+          ))}
+
+          <details className="seccion" open={pagos.length > 0}>
+            <summary>Pagos recibidos{pagos.length ? ` (${pagos.length})` : ""}</summary>
+            <ul className="form-pagos">
+              {pagos.map((p, i) => (
+                <li key={i}>
+                  <input placeholder="Cuenta destino (BCP, Yape…)" aria-label={`Cuenta del pago ${i + 1}`} value={p.cuenta} maxLength={60} onChange={(e) => setPagos((ps) => ps.map((x, j) => (j === i ? { ...x, cuenta: e.target.value } : x)))} />
+                  <input className="num" type="number" min="0" step="0.01" inputMode="decimal" placeholder="Monto" aria-label={`Monto del pago ${i + 1}`} value={p.monto} onChange={(e) => setPagos((ps) => ps.map((x, j) => (j === i ? { ...x, monto: e.target.value } : x)))} />
+                  <input placeholder="N.º de operación" aria-label={`Operación del pago ${i + 1}`} value={p.operacion} maxLength={40} onChange={(e) => setPagos((ps) => ps.map((x, j) => (j === i ? { ...x, operacion: e.target.value } : x)))} />
+                  <button type="button" className="btn" aria-label={`Quitar pago ${i + 1}`} onClick={() => setPagos((ps) => ps.filter((_, j) => j !== i))}>✕</button>
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="btn" onClick={() => setPagos((ps) => [...ps, pagoVacio()])}>Agregar pago</button>
+          </details>
+
           <ul className="form-lineas">
             {lineas.map((l, i) => (
               <li key={i} className={(l.anulada ? "anulada " : "") + (l.dudoso ? "dudosa" : "")}>
@@ -134,6 +158,7 @@ export default function NuevaProforma({ alCrear }) {
                 <input className="desc-in" placeholder="Descripción" aria-label={`Descripción línea ${i + 1}`} value={l.descripcion} onChange={(e) => cambiar(i, "descripcion", e.target.value)} />
                 <input className="num" type="number" min="0" step="0.01" inputMode="decimal" placeholder="P. unit." aria-label={`Precio línea ${i + 1}`} value={l.precioUnitario} onChange={(e) => cambiar(i, "precioUnitario", e.target.value)} />
                 <label className="marca"><input type="checkbox" checked={l.anulada} onChange={(e) => cambiar(i, "anulada", e.target.checked)} /> Tachada</label>
+                <input className="coment-in" placeholder="Comentario para el almacén (opcional)" aria-label={`Comentario línea ${i + 1}`} maxLength={300} value={l.comentario} onChange={(e) => cambiar(i, "comentario", e.target.value)} />
                 {l.dudoso && <span className="chip chip--aviso">Revisar</span>}
               </li>
             ))}

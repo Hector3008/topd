@@ -58,6 +58,13 @@ export const api = {
     marcar: (code, lineaId, cambio) => pedir("PUT", `topd/picking/${enc(code)}/lineas/${enc(lineaId)}`, cambio),
     listo: (code) => pedir("POST", `topd/picking/${enc(code)}/listo`, {}),
   },
+  revision: {
+    pendientes: () => pedir("GET", "topd/revision"),
+    cerrar: (code) => pedir("POST", `topd/revision/${enc(code)}/cerrar`, {}),
+  },
+  bandeja: {
+    listar: (estados) => pedir("GET", `topd/bandeja${estados?.length ? `?estado=${estados.join(",")}` : ""}`),
+  },
   proformas: {
     crear: (cuerpo) => pedir("POST", "topd/proformas", cuerpo),
     // OCR: lee la foto y devuelve el JSON para revisar; NO crea la proforma
@@ -73,6 +80,8 @@ export function mensajeDeError(e) {
   if (e.status === 403) return "Tu rol no puede hacer esto.";
   if (e.codigo === "OCR_NO_CONFIGURADO") return "La lectura de fotos aún no está activada. Carga la proforma a mano.";
   if (e.codigo === "LIMITE_LECTURAS" || e.codigo === "OCR_FALLO" || e.codigo === "OCR_OCUPADO" || e.codigo === "OCR_SIN_CONEXION" || e.codigo === "IMAGEN_GRANDE") return e.message;
+  if (e.codigo === "CABECERA_INVALIDA" || e.codigo === "PAGOS_INVALIDOS") return e.message;
+  if (e.codigo === "ESTADO_NO_REVISION") return "Esta proforma ya no está para revisar. Se recargó la lista.";
   if (e.codigo === "PICKING_INCOMPLETO") return "Quedan líneas sin resolver.";
   if (e.codigo === "CONFLICTO_VERSION") return "Otra persona cambió esta proforma. Se recargó con lo último.";
   if (e.status === 429) return "Demasiados intentos. Espera unos minutos.";

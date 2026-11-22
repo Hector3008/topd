@@ -1,37 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
-import { ESTADOS, cambioDeEstado, dinero, haceCuanto, pisosDe } from "./logica.js";
+import { useSondeo } from "./useSondeo.js";
+import { ESTADOS, cambioDeEstado, dinero, haceCuanto, pisosDe, resumenEntrega } from "./logica.js";
 
-const REFRESCO_MS = 10000;
 
 // Almacén: las proformas en orden_salida, la más antigua primero. Cada marca se envía al instante (el servidor guarda
 // una fila por línea), así que lo único que se pierde al recargar es una nota sin guardar (se guarda al salir del campo).
 export default function Almacen() {
-  const [datos, setDatos] = useState(null); // { puntajesPiso, proformas }
-  const [error, setError] = useState("");
+  const { datos, error, ahora, cargar } = useSondeo(api.picking.activas);
   const [abierta, setAbierta] = useState(null); // code de la proforma desplegada
-  const [ahora, setAhora] = useState(Date.now());
-  const viva = useRef(true);
-
-  const cargar = useCallback(async (silencioso = false) => {
-    try {
-      const d = await api.picking.activas();
-      if (!viva.current) return;
-      setDatos(d);
-      setAhora(Date.now());
-      if (!silencioso) setError("");
-    } catch (e) {
-      if (viva.current && !silencioso) setError(mensajeDeError(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    viva.current = true;
-    cargar();
-    const id = setInterval(() => { if (document.visibilityState === "visible") cargar(true); }, REFRESCO_MS);
-    return () => { viva.current = false; clearInterval(id); };
-  }, [cargar]);
-
   const proformas = datos?.proformas ?? [];
   return (
     <section aria-labelledby="t-almacen">
@@ -74,12 +51,13 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
     <li className={"tarjeta" + (completo ? " tarjeta--lista" : "")}>
       <button type="button" className="tarjeta__cab" onClick={alAbrir} aria-expanded={abierta}>
         <span className="codigo">{p.code}</span>
-        <span className="cliente">{p.cabecera?.cliente || "Sin cliente"}</span>
+        <span className="cliente">{p.cabecera?.cliente || "Sin cliente"}{p.cabecera?.referencia ? ` · papel ${p.cabecera.referencia}` : ""}</span>
         <span className="meta">{resueltas}/{total} · {puntaje} pts · {haceCuanto(p.creadaTs, ahora)}</span>
         <span className="barra-avance" aria-hidden="true"><span style={{ width: total ? `${(resueltas / total) * 100}%` : 0 }} /></span>
       </button>
       {abierta && (
         <div className="tarjeta__cuerpo">
+          {resumenEntrega(p.cabecera) && <p className="entrega">{resumenEntrega(p.cabecera)}</p>}
           <ul className="lineas">
             {p.lineas.map((l) => <Linea key={l.id} code={p.code} l={l} pisos={pisos} alCambiar={alCambiar} />)}
           </ul>
@@ -120,6 +98,7 @@ function Linea({ code, l, pisos, alCambiar }) {
         <span className="desc">{l.descripcion}</span>
         {l.precioUnitario != null && <span className="precio">S/ {dinero(l.precioUnitario)}</span>}
       </div>
+      {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
       <div className="linea__estado">
         <span className={"chip chip--" + pk.estado}>{ESTADOS[pk.estado]}{pk.estado === "encontrado" && pk.piso != null ? ` · piso ${pk.piso} · ${pk.puntaje} pts` : ""}</span>
         {distinta && <span className="chip chip--aviso">Trajo {pk.cantidadEncontrada} de {l.cantidad}</span>}

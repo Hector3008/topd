@@ -5,7 +5,7 @@ import { limpiarCabecera } from "../src/picking-servicio.js";
 
 // Lo que debería devolver el motor para la proforma de ejemplo (Max Importaciones N.º 236445)
 const MAX = {
-  cabecera: { numero: "236445", agencia: "Flores", cliente: "Pedalco SRL", ciudad: "Tacna", fecha: "2026-11-20", forma_pago: "credito", vendedor: "Max", despachador: "Alexis" },
+  cabecera: { referencia: "236445", agencia: "Flores", cliente: "Pedalco SRL", ciudad: "Tacna", fecha: "2026-11-20", forma_pago: "credito", vendedor: "Max", despachador: "Alexis" },
   lineas: [
     { cantidad: 1, descripcion: "Alternador Deutz Bosch 12v (12181)", precio_unitario: 400, importe: 400, anulada: false },
     { cantidad: 2, descripcion: "Portadiodo Chevrolet", precio_unitario: 75, importe: 150, anulada: false },
@@ -24,6 +24,7 @@ describe("ocr: normalizar la lectura", () => {
     assert.equal(l.suma, 630);
     assert.equal(l.total, 630);
     assert.equal(l.cabecera.formaPago, "credito");
+    assert.equal(l.cabecera.referencia, "236445");
     assert.equal(l.lineas[2].anulada, true);
     assert.equal(l.lineas[2].dudoso, true);
     assert.deepEqual(codigos(l), ["HAY_TACHADAS"]);
@@ -118,8 +119,9 @@ describe("ocr: el motor de visión", () => {
 
 describe("cabecera guardada", () => {
   it("solo guarda los campos conocidos y como texto corto", () => {
-    const c = limpiarCabecera({ cliente: " Pedalco ", agencia: "x".repeat(500), formaPago: "credito", $where: "1", vendedor: 5 });
-    assert.deepEqual(Object.keys(c).sort(), ["agencia", "cliente", "formaPago"]);
+    const c = limpiarCabecera({ cliente: " Pedalco ", referencia: " 236445 ", agencia: "x".repeat(500), formaPago: "credito", $where: "1", vendedor: 5 });
+    assert.deepEqual(Object.keys(c).sort(), ["agencia", "cliente", "formaPago", "referencia"]);
+    assert.equal(c.referencia, "236445");
     assert.equal(c.agencia.length, 200);
   });
 });

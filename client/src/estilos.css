@@ -86,3 +86,24 @@ input:not([type=checkbox]) { font: inherit; color: var(--texto); background: var
 .form-cab { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 select { font: inherit; color: var(--texto); background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%; }
 .form-lineas li.dudosa { background: color-mix(in srgb, var(--aviso) 12%, transparent); border-radius: 10px; padding: 6px; }
+.linea--atencion { background: color-mix(in srgb, var(--aviso) 10%, transparent); border-radius: 10px; padding: 12px 8px; }
+.tarjeta--atencion { border-color: var(--aviso); }
+.nota-lectura { margin: 0; font-size: .9rem; color: var(--suave); }
+.chip--est-orden_salida, .chip--est-orden_revision { color: var(--buscando); border-color: var(--buscando); }
+.chip--est-cerrada { color: var(--ok); border-color: var(--ok); }
+.chip--est-descartado, .chip--est-rechazada, .chip--est-vencida { color: var(--suave); }
+.buscador { width: 100%; margin-bottom: 12px; }
+.seccion { border: 1px solid var(--borde); border-radius: 12px; padding: 0 12px 12px; background: var(--tarjeta); }
+.seccion > summary { cursor: pointer; padding: 12px 0; font-weight: 600; min-height: 44px; }
+.form-cab label.completo { grid-column: 1 / -1; }
+.form-pagos { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.form-pagos li { display: grid; grid-template-columns: 1fr 6.5rem; gap: 8px; }
+.form-pagos li .btn { grid-column: 1 / -1; }
+@media (min-width: 600px) { .form-pagos li { grid-template-columns: 1.3fr 6.5rem 1fr auto; } .form-pagos li .btn { grid-column: auto; } }
+.form-lineas .coment-in { grid-column: 1 / -1; }
+.comentario-linea { margin: 0; font-size: .9rem; padding: 6px 10px; border-left: 3px solid var(--aviso); background: color-mix(in srgb, var(--aviso) 10%, transparent); border-radius: 0 8px 8px 0; }
+.entrega { margin: 0 0 8px; font-size: .9rem; color: var(--suave); }
+.form-lineas > li { border: 1px solid var(--borde); border-radius: 10px; padding: 8px; background: var(--tarjeta); }
+.form-lineas > li.dudosa { border-color: var(--aviso); }
+.form-pagos li .btn { grid-column: auto; min-width: 44px; }
+@media (max-width: 599px) { .form-pagos li { grid-template-columns: 1fr 6.5rem; } .form-pagos li .btn { grid-column: 1 / -1; justify-self: end; } }

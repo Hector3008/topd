@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -75,5 +75,54 @@ describe("front de topd: lógica", () => {
     assert.equal(f.lineas[1].dudoso, true);
     assert.equal(sumaDelFormulario(f.lineas), 150);
     assert.equal(f.avisos.length, 1);
+  });
+
+  it("resume lo que pasó con una línea y marca las que piden atención", () => {
+    const enc = { cantidad: 2, picking: { estado: "encontrado", piso: 3, taller: true, reconocido: "foto", cantidadEncontrada: 1, nota: "" } };
+    assert.equal(resultadoDeLinea(enc), "Piso 3 · pasó por taller · reconocido por foto · trajo 1 de 2");
+    assert.equal(requiereAtencion(enc), true);
+    const ok = { cantidad: 1, picking: { estado: "encontrado", piso: 2, taller: false, reconocido: null, cantidadEncontrada: 1, nota: "" } };
+    assert.equal(resultadoDeLinea(ok), "Piso 2");
+    assert.equal(requiereAtencion(ok), false);
+    assert.equal(resultadoDeLinea({ cantidad: 1, picking: { estado: "no_encontrado" } }), "No se encontró");
+    assert.equal(requiereAtencion({ cantidad: 1, picking: { estado: "no_encontrado" } }), true);
+    assert.equal(requiereAtencion({ cantidad: 1, picking: { estado: "encontrado", cantidadEncontrada: 1, nota: "golpeado" } }), true);
+  });
+
+  it("las estaciones salen de los permisos", () => {
+    assert.equal(puedeRevisar(["estacion:revision"]), true);
+    assert.equal(puedeRevisar(["estacion:produccion"]), false);
+    assert.equal(puedeBandeja(["*"]), true);
+  });
+
+  it("la bandeja busca por código, cliente, vendedor o referencia del papel", () => {
+    const p = { code: "DP-0000007", cabecera: { cliente: "Pedalco SRL", vendedor: "Max", referencia: "236445", ciudad: "Tacna" } };
+    for (const q of ["dp-0000007", "pedalco", "MAX", "236445", "tacna", ""]) assert.equal(coincideBusqueda(p, q), true, q);
+    assert.equal(coincideBusqueda(p, "999"), false);
+    assert.equal(coincideBusqueda({ code: "DP-1" }, "x"), false);
+  });
+
+  it("la cabecera del formulario cubre los campos del siscore anterior", () => {
+    const claves = Object.keys(cabeceraVacia());
+    for (const k of ["cliente", "ruc", "telefono", "email", "direccion", "provincia", "ciudad", "entrega", "destino", "agencia", "atencion", "canalVenta", "formaPago", "comprobante", "fecha", "vendedor", "referencia"])
+      assert.ok(claves.includes(k), k);
+    assert.equal(SECCIONES_CABECERA.length, 2);
+  });
+
+  it("resume la entrega para el almacén", () => {
+    assert.equal(resumenEntrega({ entrega: "agencia", agencia: "Flores", destino: "Arequipa", atencion: "Sr. Luis" }), "Entrega: Agencia Flores · Destino: Arequipa · Atención: Sr. Luis");
+    assert.equal(resumenEntrega({ agencia: "Flores" }), "Agencia: Flores");
+    assert.equal(resumenEntrega({}), "");
+    assert.equal(textoOpcion(ENTREGAS, "local"), "Local");
+  });
+
+  it("lleva comentarios y pagos al servidor, y exige cuenta y monto en cada pago", () => {
+    const r = prepararProforma({
+      lineas: [{ cantidad: "1", descripcion: "Alternador", comentario: " el de 24v " }],
+      pagos: [{ cuenta: "BCP Max Imp", monto: "200", operacion: "123" }, { cuenta: "", monto: "", operacion: "" }],
+    });
+    assert.equal(r.lineas[0].comentario, "el de 24v");
+    assert.deepEqual(r.pagos, [{ cuenta: "BCP Max Imp", monto: 200, operacion: "123" }]);
+    assert.match(prepararProforma({ lineas: [{ cantidad: "1", descripcion: "x" }], pagos: [{ cuenta: "BCP", monto: "" }] }).error, /pago 1/);
   });
 });

@@ -32,21 +32,34 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
     }
   }
 
-  return {
-    /** Proformas activas para el almacén, con el avance de cada línea. */
-    async activas({ limite = 100 } = {}) {
-      const docs = await documentos.listar({ tipo: TIPO_PROFORMA.tipo, estado: ESTADO_PICKING, limite });
+  const servicio = {
+    /** Proformas en uno o más estados, con el avance de cada línea (la más antigua primero, salvo `recientes`). */
+    async listar({ estados = [ESTADO_PICKING], limite = 100, recientes = false, conPagos = false } = {}) {
+      const docs = await documentos.listar({ tipo: TIPO_PROFORMA.tipo, estado: estados, limite });
       if (!docs.length) return [];
       const filas = await Picking.find({ code: { $in: docs.map((d) => d.code) } }).lean();
-      return docs
-        .reverse() // la más antigua primero: es la que lleva más tiempo esperando
-        .map((d) => {
-          const lineas = combinarAvance(lineasDelDocumento(d), filas.filter((f) => f.code === d.code));
-          return {
-            code: d.code, estado: d.estado, version: d.version, creadaTs: d.createdAt,
-            cabecera: d.payload?.doc?.cabecera ?? {}, lineas, avance: resumenAvance(lineas),
-          };
-        });
+      return (recientes ? docs : docs.reverse()).map((d) => {
+        const lineas = combinarAvance(lineasDelDocumento(d), filas.filter((f) => f.code === d.code));
+        return {
+          code: d.code, estado: d.estado, version: d.version, creadaTs: d.createdAt, actualizadaTs: d.updatedAt,
+          cabecera: d.payload?.doc?.cabecera ?? {}, origenCarga: d.payload?.doc?.origenCarga ?? "manual",
+          lineas, avance: resumenAvance(lineas),
+          // Los pagos solo salen donde hace falta (bandeja): el almacén no los necesita
+          ...(conPagos && { pagos: d.payload?.doc?.pagos ?? [] }),
+        };
+      });
+    },
+
+    /** Proformas activas para el almacén (en orden_salida). */
+    activas: (opciones) => servicio.listar({ ...opciones, estados: [ESTADO_PICKING] }),
+
+    /** Despacho: «revisé y validé el pedido». Cierra la proforma (orden_revision → cerrada). */
+    async cerrar({ code, usuarioId, permisos }) {
+      const doc = await cargarProforma(code);
+      if (doc.estado !== "orden_revision")
+        throw new ErrorPicking("ESTADO_NO_REVISION", `La proforma ${code} está en '${doc.estado}': no está para revisar`);
+      const nuevo = await documentos.transicionar({ code, a: "cerrada", usuarioId, permisos, esperaVersion: doc.version });
+      return { code, estado: nuevo.estado };
     },
 
     /** Marca una línea (parcial: solo cambia lo que llega). */
@@ -91,7 +104,7 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
     },
 
     /** Crea la proforma ya lista para picking (mínimo hasta 5.72 y el OCR). Requiere el permiso de creación. */
-    async crearOrden({ cabecera = {}, lineas, usuarioId, permisos, origen = "manual" }) {
+    async crearOrden({ cabecera = {}, lineas, pagos, usuarioId, permisos, origen = "manual" }) {
       if (!["manual", "ocr:impreso", "ocr:manuscrito"].includes(origen))
         throw new ErrorPicking("ORIGEN_INVALIDO", "Origen de carga no válido");
       if (!Array.isArray(lineas) || lineas.length === 0)
@@ -107,33 +120,62 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
         return {
           id: `L${i + 1}`, cantidad, descripcion, precioUnitario,
           importe: precioUnitario == null ? null : Math.round(cantidad * precioUnitario * 100) / 100,
+          comentario: typeof l?.comentario === "string" ? l.comentario.trim().slice(0, 300) : "",
           origen: "libre", anulada,
         };
       });
       const doc = await documentos.crear({
-        tipo: TIPO_PROFORMA.tipo, usuarioId, doc: { cabecera: limpiarCabecera(cabecera), lineas: limpias, origenCarga: origen },
+        tipo: TIPO_PROFORMA.tipo, usuarioId, doc: { cabecera: limpiarCabecera(cabecera), lineas: limpias, pagos: limpiarPagos(pagos), origenCarga: origen },
       });
       await documentos.transicionar({ code: doc.code, a: "orden_salida", usuarioId, permisos });
       return doc.code;
     },
   };
+  return servicio;
 }
 
-const CAMPOS_CABECERA = ["numero", "agencia", "cliente", "direccion", "ciudad", "fecha", "formaPago", "vendedor", "despachador"];
-/** Solo los campos conocidos de la cabecera, como texto corto (lo que llega del front no se guarda tal cual). */
+// Listas cerradas heredadas del siscore anterior (se guardan como clave, la pantalla pone el texto)
+export const ENTREGAS = ["tienda", "agencia", "local"];
+export const CANALES_VENTA = ["tienda", "online", "cartera"];
+export const COMPROBANTES = ["factura", "boleta", "proforma"];
+export const FORMAS_PAGO = ["efectivo", "deposito", "transferencia", "transferencia_y_caja", "tarjeta", "credito"];
+const CERRADOS = { entrega: ENTREGAS, canalVenta: CANALES_VENTA, comprobante: COMPROBANTES, formaPago: FORMAS_PAGO };
+const CAMPOS_CABECERA = [
+  "referencia", "cliente", "ruc", "telefono", "email", "direccion", "provincia", "ciudad",
+  "entrega", "destino", "agencia", "atencion", "canalVenta", "formaPago", "comprobante", "fecha", "vendedor", "despachador",
+];
+
+/** Solo los campos conocidos de la cabecera, como texto corto; los de lista cerrada se validan. */
 export function limpiarCabecera(c) {
   const salida = {};
   for (const k of CAMPOS_CABECERA) {
     const v = c?.[k];
-    if (typeof v === "string" && v.trim()) salida[k] = v.trim().slice(0, 200);
+    if (typeof v !== "string" || !v.trim()) continue;
+    const t = v.trim().slice(0, 200);
+    if (CERRADOS[k] && !CERRADOS[k].includes(t))
+      throw new ErrorPicking("CABECERA_INVALIDA", `Valor no válido en '${k}'`, { validos: CERRADOS[k] });
+    salida[k] = t;
   }
   return salida;
+}
+
+/** Pagos recibidos al armar la proforma: { cuenta, monto, operacion }. Hasta 10. */
+export function limpiarPagos(pagos) {
+  if (pagos == null) return [];
+  if (!Array.isArray(pagos) || pagos.length > 10) throw new ErrorPicking("PAGOS_INVALIDOS", "Los pagos deben ser una lista de hasta 10");
+  return pagos.map((p, i) => {
+    const monto = Number(p?.monto);
+    const cuenta = typeof p?.cuenta === "string" ? p.cuenta.trim().slice(0, 60) : "";
+    if (!cuenta || !(monto >= 0) || p?.monto === "" || p?.monto == null)
+      throw new ErrorPicking("PAGOS_INVALIDOS", `El pago ${i + 1} necesita cuenta y monto`);
+    return { cuenta, monto: Math.round(monto * 100) / 100, operacion: typeof p.operacion === "string" ? p.operacion.trim().slice(0, 40) : "" };
+  });
 }
 
 // Traduce los errores conocidos a respuestas HTTP
 export function responderError(e, res, next) {
   if (e instanceof ErrorPicking) {
-    const http = e.codigo.endsWith("NO_ENCONTRADA") ? 404 : e.codigo === "PICKING_INCOMPLETO" || e.codigo === "ESTADO_NO_PICKING" ? 409 : 400;
+    const http = e.codigo.endsWith("NO_ENCONTRADA") ? 404 : e.codigo === "PICKING_INCOMPLETO" || e.codigo === "ESTADO_NO_PICKING" || e.codigo === "ESTADO_NO_REVISION" ? 409 : 400;
     return res.status(http).json({ error: e.message, codigo: e.codigo, detalle: e.detalle });
   }
   if (e instanceof ErrorDocumento) {
