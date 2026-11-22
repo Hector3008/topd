@@ -8,9 +8,12 @@
     "node": ">=22"
   },
   "files": [
-    "src"
+    "src",
+    "client/dist"
   ],
   "scripts": {
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "dev": "npm --prefix client run dev",
     "test": "node --test"
   },
   "dependencies": {

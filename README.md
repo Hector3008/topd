@@ -38,3 +38,23 @@ proformas (5.72), las pantallas de las cuatro estaciones (5.73) y la sincronizac
 ## Pruebas
 
     npm test
+
+## Picking (pieza piloto)
+
+Avance del almacén sobre las proformas en `orden_salida`. Vive en su propia colección `picking` (una fila por
+proforma + línea), no en las versiones del documento. Cada marca deja el evento `picking.marca`.
+
+| Ruta | Permiso | Qué hace |
+|---|---|---|
+| `POST /proformas` | `estacion:creacion` | Crea la proforma ya en `orden_salida` (`{ cabecera, lineas:[{cantidad, descripcion, precioUnitario}], origen }`) |
+| `GET /picking` | `estacion:produccion` | Proformas activas con el avance de cada línea, y la tabla de puntajes por piso |
+| `PUT /picking/:code/lineas/:lineaId` | `estacion:produccion` | Marca parcial: `estado` (pendiente, buscando, encontrado, no_encontrado), `piso`, `taller`, `reconocido` (muestra, foto), `cantidadEncontrada`, `nota` |
+| `POST /picking/:code/listo` | `estacion:produccion` | Pasa a `orden_revision` si todas las líneas (menos las anuladas) están resueltas |
+
+Los puntajes por piso (`PUNTAJES_PISO`) son provisionales; se cambian con `createRouter({ core, puntajesPiso })`.
+
+### Front
+
+`client/` (React + Vite, `client/dist` commiteado) se sirve en `<base>/topd/`: pestaña **Almacén** (proformas
+activas, botones por línea, refresco cada 10 s) y pestaña **Nueva proforma** (carga manual; luego será la pantalla de
+revisión del OCR). Compilar: `npm run build`.
