@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -30,7 +30,7 @@ describe("front de topd: lógica", () => {
 
   it("prepara la proforma: salta filas vacías y valida las demás", () => {
     const ok = prepararProforma({
-      cliente: " Pedalco SRL ", vendedor: "Max",
+      cabecera: { cliente: " Pedalco SRL ", vendedor: "Max", agencia: "  " },
       lineas: [
         { cantidad: "1", descripcion: "Alternador Deutz", precioUnitario: "400" },
         { cantidad: "", descripcion: "", precioUnitario: "" },
@@ -38,11 +38,42 @@ describe("front de topd: lógica", () => {
       ],
     });
     assert.equal(ok.cabecera.cliente, "Pedalco SRL");
+    assert.equal("agencia" in ok.cabecera, false);
     assert.equal(ok.lineas.length, 2);
     assert.equal(ok.lineas[1].anulada, true);
     assert.match(prepararProforma({ lineas: [{ cantidad: "1.5", descripcion: "x" }] }).error, /línea 1/);
     assert.match(prepararProforma({ lineas: [{ cantidad: "", descripcion: "" }] }).error, /al menos una/);
     assert.equal(dinero(75), "75.00");
     assert.equal(dinero(null), "");
+  });
+
+  it("una línea tachada sin cantidad no bloquea la creación", () => {
+    const r = prepararProforma({ lineas: [{ cantidad: "1", descripcion: "Alternador", precioUnitario: "400" }, { cantidad: "", descripcion: "Conector chino", precioUnitario: "17", anulada: true }] });
+    assert.equal(r.error, undefined);
+    assert.equal(r.lineas[1].cantidad, 1);
+    assert.match(prepararProforma({ lineas: [{ cantidad: "", descripcion: "Conector" }] }).error, /línea 1/);
+  });
+
+  it("reduce la foto sin agrandarla", () => {
+    assert.deepEqual(reducirDimensiones(4000, 3000), { ancho: 1600, alto: 1200 });
+    assert.deepEqual(reducirDimensiones(800, 600), { ancho: 800, alto: 600 });
+  });
+
+  it("pasa la lectura al formulario y suma sin las tachadas", () => {
+    const f = formularioDeLectura({
+      cabecera: { cliente: "Pedalco SRL", formaPago: "credito", agencia: null },
+      lineas: [
+        { cantidad: 2, descripcion: "Portadiodo", precioUnitario: 75, anulada: false, dudoso: false },
+        { cantidad: null, descripcion: "Conector", precioUnitario: 17, anulada: true, dudoso: true },
+      ],
+      total: 150, avisos: [{ codigo: "HAY_TACHADAS", mensaje: "x" }],
+    });
+    assert.equal(f.cabecera.cliente, "Pedalco SRL");
+    assert.equal(f.cabecera.formaPago, "credito");
+    assert.equal(f.cabecera.agencia, "");
+    assert.equal(f.lineas[1].cantidad, "");
+    assert.equal(f.lineas[1].dudoso, true);
+    assert.equal(sumaDelFormulario(f.lineas), 150);
+    assert.equal(f.avisos.length, 1);
   });
 });

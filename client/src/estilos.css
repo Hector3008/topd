@@ -72,3 +72,17 @@ input:not([type=checkbox]) { font: inherit; color: var(--texto); background: var
 .anulada .desc-in { text-decoration: line-through; }
 .total { margin-left: auto; font-weight: 700; }
 @media (min-width: 600px) { .form-lineas li { grid-template-columns: 5rem 1fr 6.5rem auto; } .form-lineas li .marca { grid-column: auto; } }
+.ocr { display: grid; gap: 10px; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 14px; margin-bottom: 16px; }
+.ocr__modo { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.ocr__modo legend { color: var(--suave); font-size: .9rem; padding: 0; margin-bottom: 4px; }
+.btn--off { opacity: .5; cursor: not-allowed; }
+.nota-suave { color: var(--suave); margin: 0; font-size: .9rem; }
+.revision { display: grid; gap: 16px; }
+.revision__foto { margin: 0; }
+.revision__foto img { width: 100%; max-height: 60vh; object-fit: contain; border: 1px solid var(--borde); border-radius: 10px; background: var(--tarjeta); }
+.revision__foto figcaption { color: var(--suave); font-size: .85rem; margin-top: 4px; }
+@media (min-width: 900px) { .app:has(.revision) { max-width: 1180px; } .revision { grid-template-columns: minmax(280px, 1fr) minmax(0, 1.2fr); align-items: start; } .revision__foto { position: sticky; top: 8px; } }
+.avisos { margin: 0; padding: 10px 12px 10px 28px; border: 1px solid var(--aviso); border-radius: 10px; color: var(--aviso); display: grid; gap: 4px; }
+.form-cab { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+select { font: inherit; color: var(--texto); background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%; }
+.form-lineas li.dudosa { background: color-mix(in srgb, var(--aviso) 12%, transparent); border-radius: 10px; padding: 6px; }

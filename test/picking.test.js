@@ -123,3 +123,14 @@ describe("front servido por el router", () => {
     }
   });
 });
+
+describe("OCR montado en el router", () => {
+  it("registra las rutas de lectura antes del parser general", () => {
+    const core = createCore({ connection: mongoose.createConnection() });
+    const router = createRouter({ core });
+    const rutas = router.stack.filter((c) => c.route).map((c) => `${Object.keys(c.route.methods)[0]} ${c.route.path}`);
+    assert.ok(rutas.includes("post /proformas/leer"));
+    assert.ok(rutas.includes("get /ocr"));
+    assert.ok(rutas.indexOf("post /proformas/leer") < rutas.indexOf("post /proformas"));
+  });
+});

@@ -58,3 +58,16 @@ Los puntajes por piso (`PUNTAJES_PISO`) son provisionales; se cambian con `creat
 `client/` (React + Vite, `client/dist` commiteado) se sirve en `<base>/topd/`: pestaña **Almacén** (proformas
 activas, botones por línea, refresco cada 10 s) y pestaña **Nueva proforma** (carga manual; luego será la pantalla de
 revisión del OCR). Compilar: `npm run build`.
+
+### Carga con OCR (corte B)
+
+`POST /proformas/leer` (`estacion:creacion`) recibe `{ imagen, modo: "impreso" | "manuscrito" }` (la foto en data URL, reducida por el
+front a 1600 px) y devuelve `{ cabecera, lineas, total, suma, avisos }` **sin crear nada**: la persona revisa el formulario
+(foto al lado, líneas dudosas resaltadas, aviso si la suma no cuadra con el total del papel) y recién entonces crea la proforma
+con `POST /proformas` (`origen: "ocr:impreso" | "ocr:manuscrito"`). `GET /ocr` dice si la lectura está activada.
+
+- Motor: modelo de visión de Anthropic. Se activa con la variable `ANTHROPIC_API_KEY` (opcional `TOPD_OCR_MODELO`,
+  por defecto `claude-sonnet-5-5`). Sin clave, todo sigue funcionando a mano y la ruta responde 503.
+- Tope de gasto: 30 lecturas por persona y hora (`crearLector({ limitePorHora })`).
+- La foto no se guarda. Cada modo tiene su motor (`crearLector({ motores: { impreso: ... } })`), para cambiar el impreso
+  por un OCR gratuito si las fotos de muestra lo justifican.

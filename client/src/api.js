@@ -60,7 +60,10 @@ export const api = {
   },
   proformas: {
     crear: (cuerpo) => pedir("POST", "topd/proformas", cuerpo),
+    // OCR: lee la foto y devuelve el JSON para revisar; NO crea la proforma
+    leer: (cuerpo) => pedir("POST", "topd/proformas/leer", cuerpo),
   },
+  ocr: () => pedir("GET", "topd/ocr"),
 };
 
 export function mensajeDeError(e) {
@@ -68,6 +71,8 @@ export function mensajeDeError(e) {
   if (e.status === 0) return e.message;
   if (e.status === 401) return "Tu sesión caducó. Vuelve a entrar.";
   if (e.status === 403) return "Tu rol no puede hacer esto.";
+  if (e.codigo === "OCR_NO_CONFIGURADO") return "La lectura de fotos aún no está activada. Carga la proforma a mano.";
+  if (e.codigo === "LIMITE_LECTURAS" || e.codigo === "OCR_FALLO" || e.codigo === "OCR_OCUPADO" || e.codigo === "OCR_SIN_CONEXION" || e.codigo === "IMAGEN_GRANDE") return e.message;
   if (e.codigo === "PICKING_INCOMPLETO") return "Quedan líneas sin resolver.";
   if (e.codigo === "CONFLICTO_VERSION") return "Otra persona cambió esta proforma. Se recargó con lo último.";
   if (e.status === 429) return "Demasiados intentos. Espera unos minutos.";

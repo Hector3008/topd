@@ -7,9 +7,11 @@ import { CAMPOS_REPUESTO } from "./catalogo.js";
 import { pickingSchema } from "./picking-modelo.js";
 import { crearServicioPicking, responderError } from "./picking-servicio.js";
 import { PUNTAJES_PISO } from "./picking.js";
+import { crearLector, ErrorOcr } from "./ocr.js";
 
 export { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 export { CAMPOS_REPUESTO } from "./catalogo.js";
+export { crearLector, normalizarLectura, ErrorOcr, MODOS_OCR } from "./ocr.js";
 export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./picking.js";
 
 /**
@@ -23,7 +25,7 @@ export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./p
  */
 const DIST_POR_DEFECTO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "client", "dist");
 
-export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO } = {}) {
+export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO, lector = crearLector() } = {}) {
   if (!core?.documentos || !core?.catalogo)
     throw new Error("topd: createRouter necesita el núcleo (core) con documentos y catalogo");
 
@@ -31,13 +33,30 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   core.catalogo.registrarEsquema?.({ campos: { ...CAMPOS_REPUESTO } });
 
   const router = express.Router();
+  const { autenticar, requierePermiso, eventos } = core;
+  const deCreacion = [autenticar(), requierePermiso(ESTACIONES.creacion), eventos.middleware({ estacion: "creacion" })];
+
+  // Lectura de una foto de proforma (OCR): solo lee y devuelve el JSON para revisarlo; no crea nada.
+  // Va antes del parser general porque la foto (reducida por el front) pesa más que su límite de 100 kb.
+  router.post("/proformas/leer", ...deCreacion, express.json({ limit: "8mb" }), async (req, res, next) => {
+    try {
+      const lectura = await lector.leerProforma({ imagen: req.body?.imagen, mediaType: req.body?.mediaType, modo: req.body?.modo, usuarioId: String(req.auth.usuarioId) });
+      res.json(lectura);
+    } catch (e) {
+      if (e instanceof ErrorOcr) {
+        const http = { OCR_NO_CONFIGURADO: 503, OCR_SIN_CONEXION: 502, OCR_FALLO: 502, OCR_OCUPADO: 503, LIMITE_LECTURAS: 429, IMAGEN_GRANDE: 413 }[e.codigo] ?? 400;
+        return res.status(http).json({ error: e.message, codigo: e.codigo, detalle: e.detalle });
+      }
+      next(e);
+    }
+  });
+  router.get("/ocr", ...deCreacion, (_req, res) => res.json({ activo: lector.activo, modos: lector.modos }));
+
   router.use(express.json());
   // Picking (pieza piloto). Las rutas completas de proformas llegan en 5.72 y el front de cuatro estaciones en 5.73.
   const Picking = core.model("Picking", pickingSchema, "picking");
   const picking = crearServicioPicking({ core, Picking, puntajesPiso });
-  const { autenticar, requierePermiso, eventos } = core;
   const deProduccion = [autenticar(), requierePermiso(ESTACIONES.produccion), eventos.middleware({ estacion: "produccion" })];
-  const deCreacion = [autenticar(), requierePermiso(ESTACIONES.creacion), eventos.middleware({ estacion: "creacion" })];
   const quien = (req) => ({ usuarioId: req.auth.usuarioId, permisos: req.rol.permisos });
 
   router.get("/picking", ...deProduccion, async (_req, res, next) => {

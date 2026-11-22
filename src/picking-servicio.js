@@ -92,27 +92,42 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
 
     /** Crea la proforma ya lista para picking (mínimo hasta 5.72 y el OCR). Requiere el permiso de creación. */
     async crearOrden({ cabecera = {}, lineas, usuarioId, permisos, origen = "manual" }) {
+      if (!["manual", "ocr:impreso", "ocr:manuscrito"].includes(origen))
+        throw new ErrorPicking("ORIGEN_INVALIDO", "Origen de carga no válido");
       if (!Array.isArray(lineas) || lineas.length === 0)
         throw new ErrorPicking("LINEAS_REQUERIDAS", "La proforma necesita al menos una línea");
       const limpias = lineas.map((l, i) => {
-        const cantidad = Number(l?.cantidad);
+        const anulada = l?.anulada === true;
         const descripcion = typeof l?.descripcion === "string" ? l.descripcion.trim() : "";
+        // Una línea tachada no se busca: su cantidad puede ser ilegible en el papel
+        const cantidad = anulada && (l?.cantidad == null || l.cantidad === "") ? 1 : Number(l?.cantidad);
         if (!Number.isInteger(cantidad) || cantidad < 1 || !descripcion)
           throw new ErrorPicking("LINEA_INVALIDA", `La línea ${i + 1} necesita cantidad entera y descripción`);
         const precioUnitario = l.precioUnitario == null ? null : Number(l.precioUnitario);
         return {
           id: `L${i + 1}`, cantidad, descripcion, precioUnitario,
           importe: precioUnitario == null ? null : Math.round(cantidad * precioUnitario * 100) / 100,
-          origen: "libre", anulada: l.anulada === true,
+          origen: "libre", anulada,
         };
       });
       const doc = await documentos.crear({
-        tipo: TIPO_PROFORMA.tipo, usuarioId, doc: { cabecera, lineas: limpias, origenCarga: origen },
+        tipo: TIPO_PROFORMA.tipo, usuarioId, doc: { cabecera: limpiarCabecera(cabecera), lineas: limpias, origenCarga: origen },
       });
       await documentos.transicionar({ code: doc.code, a: "orden_salida", usuarioId, permisos });
       return doc.code;
     },
   };
+}
+
+const CAMPOS_CABECERA = ["numero", "agencia", "cliente", "direccion", "ciudad", "fecha", "formaPago", "vendedor", "despachador"];
+/** Solo los campos conocidos de la cabecera, como texto corto (lo que llega del front no se guarda tal cual). */
+export function limpiarCabecera(c) {
+  const salida = {};
+  for (const k of CAMPOS_CABECERA) {
+    const v = c?.[k];
+    if (typeof v === "string" && v.trim()) salida[k] = v.trim().slice(0, 200);
+  }
+  return salida;
 }
 
 // Traduce los errores conocidos a respuestas HTTP
