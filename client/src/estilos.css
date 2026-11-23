@@ -108,3 +108,7 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .form-pagos li .btn { grid-column: auto; min-width: 44px; }
 @media (max-width: 599px) { .form-pagos li { grid-template-columns: 1fr 6.5rem; } .form-pagos li .btn { grid-column: 1 / -1; justify-self: end; } }
 .tarjeta__cab .btn { margin-top: 8px; }
+.detalle { color: var(--suave); font-size: .8rem; margin: 2px 0 0; overflow-wrap: anywhere; }
+.form-lineas .detalle { grid-column: 1 / -1; margin: 0; }
+/* En el teléfono la descripción ocupa toda la fila (los nombres de los archivos son largos) */
+@media (max-width: 599px) { .form-lineas li { grid-template-columns: 5rem 1fr; } .form-lineas .desc-in { grid-column: 1 / -1; order: -1; } }

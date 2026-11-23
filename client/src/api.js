@@ -49,7 +49,23 @@ export function normalizarYo(d) {
   };
 }
 
+// Sube un archivo tal cual (Excel o PDF) y devuelve la lectura; el servidor reconoce el formato por su contenido.
+async function subirArchivo(ruta, archivo) {
+  let r;
+  try {
+    r = await fetch(BASE + ruta, { method: "POST", credentials: "same-origin", body: archivo,
+      headers: { Accept: "application/json", "x-requested-with": "topd", "Content-Type": archivo.type || "application/octet-stream" } });
+  } catch {
+    throw new ErrorApi(0, "SIN_CONEXION", "No se pudo conectar con el servidor.");
+  }
+  const datos = await r.json().catch(() => null);
+  if (!r.ok) throw new ErrorApi(r.status, datos?.codigo ?? null, typeof datos?.error === "string" ? datos.error : null, datos);
+  return datos;
+}
+
 const enc = encodeURIComponent;
+/** Enlace de descarga de la plantilla de Excel (un GET normal: la sesión viaja en la cookie). */
+export const urlPlantilla = BASE + "topd/proformas/plantilla.xlsx";
 
 export const api = {
   yo: async () => normalizarYo(await pedir("GET", "auth/yo")),
@@ -67,6 +83,7 @@ export const api = {
   },
   proformas: {
     crear: (cuerpo) => pedir("POST", "topd/proformas", cuerpo),
+    leerArchivo: (archivo) => subirArchivo("topd/proformas/archivo", archivo),
     listar: (estados) => pedir("GET", `topd/proformas${estados?.length ? `?estado=${estados.join(",")}` : ""}`),
     obtener: (code) => pedir("GET", `topd/proformas/${enc(code)}`),
     editar: (code, cuerpo) => pedir("PUT", `topd/proformas/${enc(code)}`, cuerpo),

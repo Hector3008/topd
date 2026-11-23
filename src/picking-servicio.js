@@ -165,7 +165,7 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
 
     /** Crea la proforma ya lista para picking (mínimo hasta 5.72 y el OCR). Requiere el permiso de creación. */
     async crearOrden({ cabecera = {}, lineas, pagos, usuarioId, permisos, origen = "manual" }) {
-      if (!["manual", "ocr:impreso", "ocr:manuscrito"].includes(origen))
+      if (!["manual", "ocr:impreso", "ocr:manuscrito", "archivo:xlsx", "archivo:pdf"].includes(origen))
         throw new ErrorPicking("ORIGEN_INVALIDO", "Origen de carga no válido");
       const limpias = limpiarLineas(lineas);
       const doc = await documentos.crear({
@@ -214,13 +214,16 @@ export function limpiarLineas(lineas, existentes = null, ahora = new Date()) {
     const previa = typeof l?.id === "string" && previas.has(l.id) && !usados.has(l.id) ? previas.get(l.id) : null;
     const id = previa ? previa.id : existentes ? `L${++siguiente}` : `L${i + 1}`;
     usados.add(id);
+    // Datos de catálogo que trae el archivo (modelo, código Max, proveedor, familia): texto corto, opcional
+    const catalogo = Object.fromEntries(["modelo", "codMax", "proveedor", "familia"]
+      .map((k) => [k, typeof l?.[k] === "string" ? l[k].trim().slice(0, 120) : ""]).filter(([, v]) => v));
     const base = {
-      id, cantidad, descripcion, precioUnitario,
+      id, cantidad, descripcion, precioUnitario, ...catalogo,
       importe: precioUnitario == null ? null : Math.round(cantidad * precioUnitario * 100) / 100,
       comentario, origen: previa?.origen ?? "libre", anulada,
     };
     if (!previa) return existentes ? { ...base, modificadaTs: ahora } : base;
-    const cambio = previa.cantidad !== cantidad || previa.descripcion !== descripcion || (previa.precioUnitario ?? null) !== precioUnitario
+    const cambio = ["modelo", "codMax", "proveedor", "familia"].some((k) => (previa[k] ?? "") !== (catalogo[k] ?? "")) || previa.cantidad !== cantidad || previa.descripcion !== descripcion || (previa.precioUnitario ?? null) !== precioUnitario
       || (previa.comentario ?? "") !== comentario || Boolean(previa.anulada) !== anulada;
     // Si no cambió nada se conserva la marca anterior (si la tenía)
     return cambio ? { ...base, modificadaTs: ahora } : { ...base, ...(previa.modificadaTs && { modificadaTs: previa.modificadaTs }) };

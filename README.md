@@ -80,7 +80,7 @@ con `POST /proformas` (`origen: "ocr:impreso" | "ocr:manuscrito"`). `GET /ocr` d
 | `POST /revision/:code/cerrar` | `estacion:revision` | «Revisé y validé el pedido»: pasa a `cerrada` |
 | `GET /bandeja?estado=a,b` | `estacion:bandeja` | Solo lectura: todas las proformas con su avance (el front busca por código, cliente, vendedor o referencia) |
 
-El front muestra solo las pestañas a las que el rol da acceso: Nueva proforma, Proformas, Almacén, Revisión y Bandeja.
+El front muestra solo las pestañas a las que el rol da acceso: Nueva proforma, Almacén, Revisión y Bandeja.
 En Revisión hay que marcar cada línea como revisada (la marca vive en la pantalla) antes de poder cerrar; se resaltan
 las líneas faltantes, con cantidad distinta o con nota. Revisión aún no puede devolver un pedido al almacén (pendiente de decidir).
 
@@ -94,15 +94,22 @@ destino, agencia, atención, canal de venta (`tienda | online | cartera`), forma
 comprobante (`factura | boleta | proforma`), fecha, vendedor, despachador y la referencia del papel. Cada línea lleva un **comentario** para el almacén y el
 documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que solo salen en `GET /bandeja`. Las listas cerradas se validan en el servidor.
 
-### Editar una proforma generada (estación de creación)
+### Cargar desde Excel o PDF (estación de creación)
 
-| Ruta | Permiso | Qué hace |
-|---|---|---|
-| `GET /proformas?estado=a,b` | `estacion:creacion` | Lista (por defecto orden_salida, orden_revision y cerrada) con `editable` y pagos |
-| `GET /proformas/:code` | `estacion:creacion` | Proforma completa (cabecera, líneas con `id`, pagos, `version`) para abrirla en el formulario |
-| `PUT /proformas/:code` | `estacion:creacion` | Guarda una **nueva versión** (la anterior queda en el núcleo). Exige `version` (la que se abrió): si otra persona cambió antes, `409 CONFLICTO_VERSION` |
+`POST /proformas/archivo` (permiso `estacion:creacion`): el cuerpo es el archivo tal cual (binario, máx. 8 MB). El formato se reconoce por su contenido, no por la extensión. Devuelve la misma lectura que la de fotos (`{ cabecera, lineas, total, suma, avisos, origen }`), solo para revisarla; no crea nada. Es gratis: no usa OCR ni `ANTHROPIC_API_KEY`.
 
-- Solo se edita en `borrador`, `cotizacion` y `orden_salida`; en `orden_revision` y `cerrada` responde `409 ESTADO_NO_EDITABLE`.
-- Las líneas con `id` se conservan; las sin `id` son nuevas (el id nunca se reutiliza). Lo que cambió lleva `modificadaTs` y el almacén ve «Corregida por ventas».
-- El avance del almacén se reinicia **solo** en las líneas quitadas o cuya cantidad, descripción o tachado cambió; precio y comentario no lo reinician.
-- Sin cambios reales no se crea versión. Cada edición deja el evento `proforma.editada` (estación creación).
+- **Columnas** (por su nombre, en cualquier orden, con o sin acentos): `CANTIDAD SOLICITADA` / `CANTIDAD` / `PEDIDO`, `NOMBRE COMERCIAL` / `NOMBRE` / `DESCRIPCION` (estas dos obligatorias), `MODELO` / `ALIAS`, `COD MAX`, `PROVEEDOR`, `FAMILIA`, `FECHA DE ENVIO`, y si existen `PRECIO UNITARIO` e `IMPORTE`.
+- Cada línea guarda además `modelo`, `codMax`, `proveedor` y `familia`; el almacén y la revisión los muestran bajo la descripción. Editarlos no reinicia el avance de picking.
+- Encima de la tabla se reconocen `Cliente:`/`Tienda:`/`Tda …`, `RUC` y `N° de proforma`. La fecha de envío más frecuente pasa a la cabecera.
+- Excel: un texto tachado en la celda deja la línea como tachada. PDF: debe tener texto; los nombres partidos en dos líneas y los encabezados repetidos en varias páginas se resuelven. Un PDF que es solo una imagen responde `PDF_SIN_TEXTO` (usar la foto).
+- `origen` de la proforma: `archivo:xlsx` o `archivo:pdf`. Errores: `SIN_TABLA`, `ARCHIVO_INVALIDO`, `ARCHIVO_REQUERIDO`, `ARCHIVO_GRANDE` (413), `PDF_SIN_TEXTO`.
+- Dependencias nuevas: `exceljs` y `pdfjs-dist` (se cargan solo al leer un archivo).
+
+#### Plantilla de Excel
+
+`GET /proformas/plantilla.xlsx` (permiso `estacion:creacion`) descarga una plantilla lista para llenar; en «Nueva proforma» está el botón «Descargar plantilla de Excel». Se arma en el momento (`src/plantilla.js`), así que siempre coincide con lo que lee la carga.
+
+- Hoja **Proforma**: datos de cabecera (etiqueta y valor; entrega, canal de venta, forma de pago y comprobante con lista desplegable; fecha con formato) y una tabla con CANTIDAD, MODELO, NOMBRE COMERCIAL, COD MAX, PROVEEDOR, FAMILIA, PRECIO UNITARIO y COMENTARIO PARA EL ALMACÉN, con validación de cantidad entera y precio numérico para 200 líneas (el máximo del servidor).
+- Hojas **Ejemplo** e **Instrucciones**: de apoyo; la carga las ignora.
+- Al cargar un Excel se reconocen estas etiquetas de cabecera (en una celda «Etiqueta: valor» o una celda de etiqueta seguida de su valor): cliente, RUC/DNI, teléfono, e-mail, dirección, provincia, ciudad, entrega, destino, agencia, atención, canal de venta, forma de pago, comprobante, fecha, vendedor, despachador y N.º de la proforma de papel. Un valor que no está en la lista cerrada no se carga y se avisa (`CABECERA_VALOR`).
+- Una columna `COMENTARIO` (o `OBSERVACION`) pasa al comentario de la línea para el almacén.

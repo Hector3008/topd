@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, mensajeDeError } from "./api.js";
-import { SECCIONES_CABECERA, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
+import { api, mensajeDeError, urlPlantilla } from "./api.js";
+import { SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
 
 const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
 
@@ -84,6 +84,28 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
     }
   }
 
+  // Carga desde Excel o PDF: gratis y exacta (no hay OCR). Llena el mismo formulario para revisarlo.
+  async function cargarArchivo(e) {
+    const archivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!archivo) return;
+    setLeyendo(true); setError("");
+    try {
+      const r = await api.proformas.leerArchivo(archivo);
+      const f = formularioDeLectura(r);
+      setFoto(null);
+      setCabecera(f.cabecera);
+      setLineas(f.lineas.length ? f.lineas : [vacia(), vacia(), vacia()]);
+      setLectura({ total: f.total, avisos: f.avisos });
+      setOrigen(r.origen ?? "archivo:xlsx");
+      setCreada(null);
+    } catch (err) {
+      setError(mensajeDeError(err));
+    } finally {
+      setLeyendo(false);
+    }
+  }
+
   function limpiar() {
     setCabecera(cabeceraVacia()); setLineas([vacia(), vacia(), vacia()]); setPagos([]); setFoto(null); setLectura(null); setOrigen("manual");
   }
@@ -123,6 +145,16 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
         </p>
       )}
 
+      {!editando && (
+        <div className="ocr">
+          <label className={"btn btn--primario" + (leyendo ? " btn--off" : "")}>
+            {leyendo ? "Leyendo el archivo…" : "Cargar desde Excel o PDF"}
+            <input type="file" accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden disabled={leyendo} onChange={cargarArchivo} />
+          </label>
+          <p className="nota-suave">Gratis y exacto. Revisa lo cargado antes de crear; si el PDF es una imagen, usa la foto.</p>
+          <a className="btn" href={urlPlantilla} download>Descargar plantilla de Excel</a>
+        </div>
+      )}
       {!editando && ocrActivo !== false && <div className="ocr">
         <fieldset className="ocr__modo" disabled={leyendo}>
           <legend>¿Cómo está la proforma de papel?</legend>
@@ -192,6 +224,7 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
                 {editando && <button type="button" className="btn" aria-label={`Quitar línea ${i + 1}`} onClick={() => setLineas((ls) => (ls.length > 1 ? ls.filter((_, j) => j !== i) : ls))}>✕</button>}
                 <label className="marca"><input type="checkbox" checked={l.anulada} onChange={(e) => cambiar(i, "anulada", e.target.checked)} /> Tachada</label>
                 <input className="coment-in" placeholder="Comentario para el almacén (opcional)" aria-label={`Comentario línea ${i + 1}`} maxLength={300} value={l.comentario} onChange={(e) => cambiar(i, "comentario", e.target.value)} />
+                {detalleLinea(l) && <span className="detalle">{detalleLinea(l)}</span>}
                 {l.dudoso && <span className="chip chip--aviso">Revisar</span>}
               </li>
             ))}

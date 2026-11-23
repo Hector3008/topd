@@ -1,4 +1,4 @@
-import { dinero, resultadoDeLinea, requiereAtencion } from "./logica.js";
+import { detalleLinea, dinero, resultadoDeLinea, requiereAtencion } from "./logica.js";
 
 // Líneas de una proforma en solo lectura: qué se pidió y qué pasó con cada una. Las que merecen atención se resaltan.
 // `marcas` (opcional): { [lineaId]: true } con casillas «revisé» que controla quien llama.
@@ -12,7 +12,8 @@ export default function LineasLectura({ lineas, marcas = null, alMarcar = null }
             <span className="desc">{l.descripcion}</span>
             {l.precioUnitario != null && <span className="precio">S/ {dinero(l.precioUnitario)}</span>}
           </div>
-          {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
+          {detalleLinea(l) && <p className="detalle">{detalleLinea(l)}</p>}
+      {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
           <div className="linea__estado">
             <span className={"chip chip--" + (l.picking?.estado ?? "pendiente")}>{resultadoDeLinea(l)}</span>
             {l.modificadaTs && <span className="chip chip--aviso">Corregida por ventas</span>}

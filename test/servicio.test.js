@@ -219,3 +219,21 @@ describe("editar una proforma generada", () => {
     assert.deepEqual(ev.datos.reiniciadas, ["L1"]);
   });
 });
+
+describe("proformas con datos de catálogo (carga desde archivo)", () => {
+  it("se guardan en la línea, aceptan el origen archivo y editarlos no reinicia el almacén", async () => {
+    const e = entorno();
+    const code = await e.svc.crearOrden({ origen: "archivo:pdf", cabecera: { cliente: "Tda Cajamarca" },
+      lineas: [{ cantidad: 2, descripcion: "Relay Volvo", modelo: "SR45250", codMax: "MX1-03-00-SUNR-2006", proveedor: "TORQ X-JPN", familia: "RELAY", extra: "no se guarda" }] });
+    const p = await e.svc.obtener({ code });
+    assert.equal(p.origenCarga, "archivo:pdf");
+    assert.deepEqual([p.lineas[0].modelo, p.lineas[0].codMax, p.lineas[0].proveedor, p.lineas[0].familia], ["SR45250", "MX1-03-00-SUNR-2006", "TORQ X-JPN", "RELAY"]);
+    assert.equal("extra" in p.lineas[0], false);
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 2 }, usuarioId: "u2" });
+    const r = await e.svc.editar({ code, esperaVersion: 1, usuarioId: "u1", lineas: [{ ...p.lineas[0], proveedor: "TORQ" }] });
+    assert.deepEqual(r.reiniciadas, []);
+    assert.equal(e.filas.length, 1);
+    assert.equal((await e.svc.obtener({ code })).lineas[0].proveedor, "TORQ");
+    await falla(e.svc.crearOrden({ origen: "archivo:csv", lineas: [{ cantidad: 1, descripcion: "x" }] }), "ORIGEN_INVALIDO");
+  });
+});

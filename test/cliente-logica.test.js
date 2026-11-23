@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -142,5 +142,21 @@ describe("front de topd: editar una proforma", () => {
     const r = prepararProforma({ cabecera: f.cabecera, lineas: [...f.lineas, { cantidad: "1", descripcion: "Nueva", precioUnitario: "", comentario: "", anulada: false }], pagos: f.pagos });
     assert.deepEqual(r.lineas.map((l) => l.id), ["L1", "L3", undefined]);
     assert.equal(r.lineas[0].comentario, "24v");
+  });
+});
+
+describe("front de topd: carga desde archivo", () => {
+  it("los datos de catálogo del archivo viajan por el formulario hasta la proforma y se muestran bajo la descripción", () => {
+    const f = formularioDeLectura({ cabecera: { cliente: "Tda Cajamarca", fecha: "2026-11-17" }, total: null, avisos: [],
+      lineas: [{ cantidad: 2, descripcion: "Relay Volvo", modelo: "SR45250", codMax: "MX1-03-00-SUNR-2006", proveedor: "TORQ X-JPN", familia: "RELAY", dudoso: false }] });
+    assert.equal(f.cabecera.cliente, "Tda Cajamarca");
+    assert.equal(detalleLinea(f.lineas[0]), "SR45250 · MX1-03-00-SUNR-2006 · TORQ X-JPN · RELAY");
+    const r = prepararProforma({ cabecera: f.cabecera, lineas: f.lineas });
+    assert.deepEqual([r.lineas[0].modelo, r.lineas[0].codMax, r.lineas[0].proveedor, r.lineas[0].familia], ["SR45250", "MX1-03-00-SUNR-2006", "TORQ X-JPN", "RELAY"]);
+  });
+  it("sin datos de catálogo no se agrega nada ni se muestra el detalle", () => {
+    const r = prepararProforma({ lineas: [{ cantidad: "1", descripcion: "Relay" }] });
+    assert.equal("modelo" in r.lineas[0], false);
+    assert.equal(detalleLinea({ descripcion: "x" }), "");
   });
 });

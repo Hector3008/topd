@@ -102,16 +102,20 @@ export function normalizarLectura(crudo) {
       precioUnitario,
       importe,
       anulada: l?.anulada === true,
-      dudoso: [...dudosos].some((d) => d.startsWith(clave)) || cantidad == null || !txt(l?.descripcion),
+      dudoso: [...dudosos].some((d) => d.startsWith(clave)) || cantidad == null || !Number.isInteger(cantidad) || cantidad < 1 || !txt(l?.descripcion),
+      // Datos de catálogo que traen los archivos (Excel/PDF); la lectura de fotos no los usa
+      ...Object.fromEntries(["modelo", "codMax", "proveedor", "familia", "comentario"].filter((k) => txt(l?.[k])).map((k) => [k, txt(l[k])])),
     };
   });
   const total = num(crudo?.total);
   const fecha = typeof c.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.fecha) ? c.fecha : null;
   const cabecera = {
     referencia: txt(c.referencia), agencia: txt(c.agencia), cliente: txt(c.cliente), ruc: txt(c.ruc), direccion: txt(c.direccion),
-    ciudad: txt(c.ciudad), fecha, formaPago: ["efectivo", "deposito", "credito"].includes(c.forma_pago ?? c.formaPago) ? (c.forma_pago ?? c.formaPago) : null,
+    ciudad: txt(c.ciudad), fecha, formaPago: ["efectivo", "deposito", "transferencia", "transferencia_y_caja", "tarjeta", "credito"].includes(c.forma_pago ?? c.formaPago) ? (c.forma_pago ?? c.formaPago) : null,
     vendedor: txt(c.vendedor), despachador: txt(c.despachador),
   };
+  // Datos que traen los archivos (Excel/PDF) y la lectura de fotos no devuelve: solo si vienen
+  for (const k of ["telefono", "email", "provincia", "entrega", "destino", "atencion", "canalVenta", "comprobante"]) if (txt(c[k])) cabecera[k] = txt(c[k]);
 
   const avisos = [];
   if (!lineas.length) avisos.push({ codigo: "SIN_LINEAS", mensaje: "No se pudo leer ninguna línea." });

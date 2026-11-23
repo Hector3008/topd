@@ -8,11 +8,14 @@ import { pickingSchema } from "./picking-modelo.js";
 import { crearServicioPicking, responderError } from "./picking-servicio.js";
 import { PUNTAJES_PISO } from "./picking.js";
 import { crearLector, ErrorOcr } from "./ocr.js";
+import { leerArchivo, ErrorArchivo, MAX_BYTES_ARCHIVO } from "./archivo.js";
+import { crearPlantilla, NOMBRE_PLANTILLA } from "./plantilla.js";
 
 export { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 export { CAMPOS_REPUESTO } from "./catalogo.js";
 export { ENTREGAS, CANALES_VENTA, COMPROBANTES, FORMAS_PAGO } from "./picking-servicio.js";
 export { crearLector, normalizarLectura, ErrorOcr, MODOS_OCR } from "./ocr.js";
+export { leerArchivo, ErrorArchivo } from "./archivo.js";
 export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./picking.js";
 
 /**
@@ -50,6 +53,23 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       }
       next(e);
     }
+  });
+  // Carga desde un archivo Excel (.xlsx) o PDF con texto: gratis y exacta. El cuerpo es el archivo tal cual (binario);
+  // el formato se reconoce por su contenido. Solo lee y devuelve la lectura para revisarla; no crea nada.
+  router.post("/proformas/archivo", ...deCreacion, express.raw({ type: () => true, limit: MAX_BYTES_ARCHIVO }), async (req, res, next) => {
+    try {
+      res.json(await leerArchivo(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)));
+    } catch (e) {
+      if (e instanceof ErrorArchivo) {
+        const http = { ARCHIVO_GRANDE: 413 }[e.codigo] ?? 400;
+        return res.status(http).json({ error: e.message, codigo: e.codigo, detalle: e.detalle });
+      }
+      next(e);
+    }
+  }, (err, _req, res, next) => {
+    // El límite de tamaño lo corta el parser antes de llegar al servicio
+    if (err?.type === "entity.too.large") return res.status(413).json({ error: "El archivo pesa demasiado (máximo 8 MB).", codigo: "ARCHIVO_GRANDE" });
+    next(err);
   });
   router.get("/ocr", ...deCreacion, (_req, res) => res.json({ activo: lector.activo, modos: lector.modos }));
 
@@ -101,6 +121,13 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       const pedidos = typeof req.query.estado === "string" && req.query.estado ? req.query.estado.split(",").slice(0, 8) : ["orden_salida", "orden_revision", "cerrada"];
       res.json({ proformas: await picking.listar({ estados: [...new Set(pedidos)], limite: 100, recientes: true, conPagos: true }) });
     } catch (e) { responderError(e, res, next); }
+  });
+  // Plantilla de Excel para cargar varias líneas (debe ir antes de /proformas/:code)
+  router.get("/proformas/plantilla.xlsx", ...deCreacion, async (_req, res, next) => {
+    try {
+      res.set({ "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${NOMBRE_PLANTILLA}"`, "Cache-Control": "no-store" });
+      res.send(await crearPlantilla());
+    } catch (e) { next(e); }
   });
   router.get("/proformas/:code", ...deCreacion, async (req, res, next) => {
     try { res.json(await picking.obtener({ code: req.params.code })); } catch (e) { responderError(e, res, next); }

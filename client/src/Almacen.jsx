@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
 import { useSondeo } from "./useSondeo.js";
-import { ESTADOS, cambioDeEstado, dinero, haceCuanto, pisosDe, resumenEntrega } from "./logica.js";
+import { ESTADOS, cambioDeEstado, detalleLinea, dinero, haceCuanto, pisosDe, resumenEntrega } from "./logica.js";
 
 
 // Almacén: las proformas en orden_salida, la más antigua primero. Cada marca se envía al instante (el servidor guarda
@@ -98,6 +98,7 @@ function Linea({ code, l, pisos, alCambiar }) {
         <span className="desc">{l.descripcion}</span>
         {l.precioUnitario != null && <span className="precio">S/ {dinero(l.precioUnitario)}</span>}
       </div>
+      {detalleLinea(l) && <p className="detalle">{detalleLinea(l)}</p>}
       {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
       <div className="linea__estado">
         <span className={"chip chip--" + pk.estado}>{ESTADOS[pk.estado]}{pk.estado === "encontrado" && pk.piso != null ? ` · piso ${pk.piso} · ${pk.puntaje} pts` : ""}</span>

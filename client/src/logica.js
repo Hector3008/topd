@@ -109,6 +109,12 @@ export function reducirDimensiones(ancho, alto, max = 1600) {
 }
 
 /** Pasa la lectura del servidor al estado del formulario (todo texto, para poder editarlo). */
+/** Datos de catálogo que traen los archivos y que el almacén usa para ubicar la pieza. */
+export const CAMPOS_CATALOGO = ["modelo", "codMax", "proveedor", "familia"];
+const catalogoDe = (l) => Object.fromEntries(CAMPOS_CATALOGO.filter((k) => String(l?.[k] ?? "").trim()).map((k) => [k, String(l[k]).trim()]));
+/** «LL-AMI61-001 · MX2-01-00-LU-875 · LU · ARMADURA»: lo que se muestra bajo la descripción. */
+export const detalleLinea = (l) => CAMPOS_CATALOGO.map((k) => String(l?.[k] ?? "").trim()).filter(Boolean).join(" · ");
+
 export function formularioDeLectura(lectura) {
   const cabecera = { ...cabeceraVacia() };
   for (const [k, v] of Object.entries(lectura?.cabecera ?? {})) if (k in cabecera && v != null) cabecera[k] = String(v);
@@ -116,9 +122,10 @@ export function formularioDeLectura(lectura) {
     cantidad: l.cantidad == null ? "" : String(l.cantidad),
     descripcion: l.descripcion ?? "",
     precioUnitario: l.precioUnitario == null ? "" : String(l.precioUnitario),
-    comentario: "",
+    comentario: String(l.comentario ?? ""),
     anulada: l.anulada === true,
     dudoso: l.dudoso === true,
+    ...catalogoDe(l),
   }));
   return { cabecera, lineas, total: lectura?.total ?? null, avisos: lectura?.avisos ?? [] };
 }
@@ -135,6 +142,7 @@ export function formularioDeProforma(p) {
     comentario: l.comentario ?? "",
     anulada: l.anulada === true,
     dudoso: false,
+    ...catalogoDe(l),
   }));
   const pagos = (p?.pagos ?? []).map((x) => ({ cuenta: x.cuenta ?? "", monto: x.monto == null ? "" : String(x.monto), operacion: x.operacion ?? "" }));
   return { cabecera, lineas, pagos };
@@ -157,7 +165,7 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }) {
       return { error: `La línea ${i + 1} necesita cantidad entera y descripción.` };
     const precio = String(l.precioUnitario ?? "").trim();
     if (precio !== "" && !(Number(precio) >= 0)) return { error: `El precio de la línea ${i + 1} no es válido.` };
-    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
+    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
   }
   if (!limpias.length) return { error: "Agrega al menos una línea." };
   const limpia = {};
