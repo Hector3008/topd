@@ -17,6 +17,7 @@ export const puedeAlmacen = (p) => permite(p, "estacion:produccion");
 export const puedeCrear = (p) => permite(p, "estacion:creacion");
 export const puedeRevisar = (p) => permite(p, "estacion:revision");
 export const puedeBandeja = (p) => permite(p, "estacion:bandeja");
+export const puedeSupervisar = (p) => permite(p, "estacion:supervision");
 export const puedeConfigurar = (p) => permite(p, "estacion:configuracion");
 
 export const ESTADOS_PROFORMA = {

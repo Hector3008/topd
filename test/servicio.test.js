@@ -353,3 +353,18 @@ describe("reporte de picking", () => {
     await falla(e.svc.reportePicking({ desde: "2026-01-01", hasta: "2026-11-01" }), "RANGO_INVALIDO");
   });
 });
+
+describe("supervisor de picking", () => {
+  it("junta lo hecho hoy, lo que se busca y quién lo busca", async () => {
+    const e = entorno();
+    const code = await e.svc.crearOrden({ cabecera: { cliente: "Pedalco" }, lineas: [{ cantidad: 1, descripcion: "A" }, { cantidad: 2, descripcion: "B" }, { cantidad: 1, descripcion: "C" }] });
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 2 }, usuarioId: "u2" });
+    await e.svc.marcar({ code, lineaId: "L2", cambio: { estado: "buscando" }, usuarioId: "u2" });
+    const s = await e.svc.supervisorPicking({ zona: "UTC" });
+    assert.deepEqual([s.hoy.lineas, s.hoy.puntaje], [1, 2]);
+    assert.deepEqual([s.cola.lineasPendientes, s.cola.enBusqueda, s.cola.sinTocar, s.cola.proformas], [2, 1, 1, 1]);
+    assert.deepEqual(s.enCurso.map((x) => [x.descripcion, x.persona]), [["B", "Rosa"]]);
+    assert.equal(s.proformas[0].cliente, "Pedalco");
+    assert.equal(s.proformas[0].porcentaje, 33);
+  });
+});

@@ -93,6 +93,7 @@ export const api = {
     leer: (cuerpo) => pedir("POST", "topd/proformas/leer", cuerpo),
   },
   ocr: () => pedir("GET", "topd/ocr"),
+  supervision: () => pedir("GET", "topd/supervision"),
   reportes: {
     picking: (desde, hasta) => pedir("GET", `topd/reportes/picking?${new URLSearchParams({ ...(desde && { desde }), ...(hasta && { hasta }) })}`),
   },

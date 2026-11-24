@@ -1,6 +1,6 @@
 import { ErrorDocumento } from "core";
 import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
-import { armarReporte, rangoDeDias } from "./reportes.js";
+import { armarReporte, armarSupervisor, diaDe, rangoDeDias } from "./reportes.js";
 import { configPorDefecto, limpiarConfig, puntajesDe, copiaDeEmisor } from "./config.js";
 import {
   ErrorPicking, PUNTAJES_PISO, lineasDelDocumento, aplicarMarca, combinarAvance, resumenAvance,
@@ -39,6 +39,16 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
     }
   }
 
+  // Nombre de cada persona (el modelo Usuario es global); si falla, el reporte sale igual sin nombres
+  async function nombresDe(ids) {
+    const unicos = [...new Set(ids.filter(Boolean).map(String))];
+    if (!unicos.length || !modelos.Usuario) return {};
+    try {
+      const us = await modelos.Usuario.find({ _id: { $in: unicos } }).select("nombre correo").lean();
+      return Object.fromEntries(us.map((u) => [String(u._id), u.nombre || u.correo]));
+    } catch (e) { console.error("topd: no se pudieron leer los nombres", e); return {}; }
+  }
+
   const servicio = {
     /** Configuración vigente de la empresa (pisos, puntajes, emisores); si nunca se guardó, la de por defecto. */
     async config() {
@@ -69,15 +79,22 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
     async reportePicking({ desde, hasta, zona } = {}) {
       const r = rangoDeDias({ desde, hasta }, { zona });
       const filas = await Picking.find({ estado: { $in: ["encontrado", "no_encontrado"] }, resueltoTs: { $gte: r.ini, $lt: r.fin } }).lean();
-      const ids = [...new Set(filas.map((f) => (f.porId ? String(f.porId) : "")).filter(Boolean))];
-      let nombres = {};
-      if (ids.length && modelos.Usuario) {
-        try {
-          const us = await modelos.Usuario.find({ _id: { $in: ids } }).select("nombre correo").lean();
-          nombres = Object.fromEntries(us.map((u) => [String(u._id), u.nombre || u.correo]));
-        } catch (e) { console.error("topd: no se pudieron leer los nombres del reporte", e); }
-      }
+      const nombres = await nombresDe(filas.map((f) => f.porId));
       return { desde: r.desde, hasta: r.hasta, ...armarReporte(filas, nombres, { zona }) };
+    },
+
+    /** Vista del supervisor: cómo va hoy el almacén (lo resuelto, lo pendiente, quién busca qué). Hoy = el día de la empresa. */
+    async supervisorPicking({ zona, ahora = new Date() } = {}) {
+      const dia = diaDe(ahora, zona);
+      const hoy = rangoDeDias({ desde: dia, hasta: dia }, { zona, ahora });
+      const [activas, filasDia, salidas] = await Promise.all([
+        servicio.activas({ limite: 100 }),
+        Picking.find({ estado: { $in: ["encontrado", "no_encontrado"] }, resueltoTs: { $gte: hoy.ini, $lt: hoy.fin } }).lean(),
+        servicio.listar({ estados: ["orden_revision", "cerrada"], limite: 200, recientes: true }),
+      ]);
+      const listasHoy = salidas.filter((d) => d.actualizadaTs && new Date(d.actualizadaTs) >= hoy.ini && new Date(d.actualizadaTs) < hoy.fin).length;
+      const ids = [...filasDia.map((f) => f.porId), ...activas.flatMap((p) => p.lineas.map((l) => l.picking.porId))];
+      return { generadaTs: ahora, dia, ...armarSupervisor({ activas, filasDia, listasHoy, nombres: await nombresDe(ids), ahora, zona }) };
     },
 
     /** Proformas en uno o más estados, con el avance de cada línea (la más antigua primero, salvo `recientes`). */

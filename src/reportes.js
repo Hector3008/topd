@@ -91,3 +91,67 @@ export function armarReporte(filas, nombres = {}, { zona = ZONA_POR_DEFECTO } = 
       .sort((a, b) => a.dia.localeCompare(b.dia)),
   };
 }
+
+const HECHA = ["encontrado", "no_encontrado"];
+
+/**
+ * Vista del supervisor: cómo va el día en el almacén. Mezcla lo ya resuelto hoy (`filasDia`, filas de Picking) con lo que
+ * está en cola (`activas`, proformas en orden_salida con sus líneas y avance). Lógica pura; el servicio le pasa los datos.
+ * `listasHoy`: proformas que hoy salieron del almacén (pasaron a revisión o se cerraron).
+ */
+export function armarSupervisor({ activas = [], filasDia = [], listasHoy = 0, nombres = {}, ahora = new Date(), zona = ZONA_POR_DEFECTO } = {}) {
+  const t0 = new Date(ahora).getTime();
+  const nombre = (id) => (id ? nombres[String(id)] ?? "Persona sin nombre" : "Sin registrar");
+  const dia = armarReporte(filasDia, nombres, { zona });
+
+  const lineasActivas = activas.flatMap((p) => p.lineas.map((l) => ({ p, l })));
+  const pendientes = lineasActivas.filter(({ l }) => !HECHA.includes(l.picking.estado));
+  const enBusqueda = pendientes.filter(({ l }) => l.picking.estado === "buscando");
+
+  // Qué se está buscando ahora y quién lo busca (lo más antiguo primero)
+  const enCurso = enBusqueda
+    .map(({ p, l }) => ({
+      code: p.code, lineaId: l.id, cantidad: l.cantidad, descripcion: l.descripcion, cliente: p.cabecera?.cliente ?? "",
+      personaId: l.picking.porId ? String(l.picking.porId) : "", persona: nombre(l.picking.porId),
+      desdeMs: l.picking.iniciadoTs ? Math.max(0, t0 - new Date(l.picking.iniciadoTs).getTime()) : null,
+    }))
+    .sort((a, b) => (b.desdeMs ?? -1) - (a.desdeMs ?? -1));
+
+  // Cada persona: qué tiene en la mano, qué resolvió hoy y cuándo fue su última marca
+  const gente = new Map();
+  const de = (id) => { const k = id ? String(id) : ""; if (!gente.has(k)) gente.set(k, { id: k, nombre: nombre(k), buscando: 0, resueltasHoy: 0, puntajeHoy: 0, ultimaTs: null }); return gente.get(k); };
+  const ultima = (g, ts) => { if (ts && (!g.ultimaTs || new Date(ts) > new Date(g.ultimaTs))) g.ultimaTs = new Date(ts).toISOString(); };
+  for (const x of dia.porPersona) { const g = de(x.id); g.resueltasHoy = x.lineas; g.puntajeHoy = x.puntaje; }
+  for (const f of filasDia) if (HECHA.includes(f.estado)) ultima(de(f.porId), f.resueltoTs);
+  for (const { l } of enBusqueda) { const g = de(l.picking.porId); g.buscando += 1; ultima(g, l.picking.iniciadoTs); }
+  const personas = [...gente.values()].sort((a, b) => b.buscando - a.buscando || b.puntajeHoy - a.puntajeHoy);
+
+  const proformas = activas.map((p) => {
+    const hechas = p.lineas.filter((l) => HECHA.includes(l.picking.estado)).length;
+    const buscando = p.lineas.filter((l) => l.picking.estado === "buscando").length;
+    const quienes = [...new Set(p.lineas.filter((l) => l.picking.porId && l.picking.estado !== "pendiente").map((l) => nombre(l.picking.porId)))];
+    return {
+      code: p.code, cliente: p.cabecera?.cliente ?? "", entrega: p.cabecera?.entrega ?? "", creadaTs: p.creadaTs,
+      esperaMs: p.creadaTs ? Math.max(0, t0 - new Date(p.creadaTs).getTime()) : null,
+      total: p.lineas.length, resueltas: hechas, buscando, sinTocar: p.lineas.length - hechas - buscando,
+      porcentaje: p.lineas.length ? Math.round((hechas / p.lineas.length) * 100) : 0, completa: p.avance?.completo ?? false, personas: quienes,
+      lineas: p.lineas.map((l) => ({ id: l.id, cantidad: l.cantidad, descripcion: l.descripcion, estado: l.picking.estado, piso: l.picking.piso, puntaje: l.picking.puntaje, persona: l.picking.porId && l.picking.estado !== "pendiente" ? nombre(l.picking.porId) : "" })),
+    };
+  }).sort((a, b) => (b.esperaMs ?? -1) - (a.esperaMs ?? -1)); // la que más espera, primero
+
+  // Ritmo de la última hora y cuánto tardaría lo que queda a ese ritmo (solo es un estimado)
+  const ultimaHora = filasDia.filter((f) => HECHA.includes(f.estado) && f.resueltoTs && t0 - new Date(f.resueltoTs).getTime() <= 3600 * 1000).length;
+  const porHora = Array.from({ length: 24 }, (_, h) => ({ hora: String(h).padStart(2, "0"), lineas: 0, puntaje: 0 }));
+  for (const f of filasDia) if (HECHA.includes(f.estado) && f.resueltoTs) { const h = Number(partes(new Date(f.resueltoTs), zona).hour); porHora[h].lineas += 1; porHora[h].puntaje = redondeo(porHora[h].puntaje + (f.puntaje ?? 0)); }
+
+  return {
+    hoy: dia.totales, porPiso: dia.porPiso, porHora: porHora.filter((h) => h.lineas > 0),
+    cola: {
+      proformas: activas.length, listasParaPasar: proformas.filter((p) => p.completa).length,
+      lineasPendientes: pendientes.length, enBusqueda: enBusqueda.length, sinTocar: pendientes.length - enBusqueda.length,
+      listasHoy,
+    },
+    ritmo: { ultimaHora, restanteMin: ultimaHora > 0 && pendientes.length ? Math.round((pendientes.length / ultimaHora) * 60) : null },
+    personas, enCurso, proformas,
+  };
+}

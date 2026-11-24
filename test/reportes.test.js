@@ -44,3 +44,46 @@ describe("reporte de picking (lógica pura)", () => {
     assert.throws(() => rangoDeDias({ desde: "2026-11-24", hasta: "2026-11-23" }), (e) => e.codigo === "RANGO_INVALIDO");
   });
 });
+
+import { armarSupervisor } from "../src/reportes.js";
+
+describe("vista del supervisor (lógica pura)", () => {
+  const ahora = new Date("2026-11-23T17:00:00Z"); // 12:00 en Lima
+  const lin = (id, estado, extra = {}) => ({ id, cantidad: 1, descripcion: `Pieza ${id}`, picking: { estado, piso: null, puntaje: 0, porId: null, iniciadoTs: null, resueltoTs: null, ...extra } });
+  const activas = [
+    { code: "DP-2", creadaTs: "2026-11-23T16:00:00Z", cabecera: { cliente: "Nueva", entrega: "agencia" }, avance: { completo: false },
+      lineas: [lin("L1", "pendiente"), lin("L2", "buscando", { porId: "u1", iniciadoTs: "2026-11-23T16:50:00Z" })] },
+    { code: "DP-1", creadaTs: "2026-11-23T14:00:00Z", cabecera: { cliente: "Vieja" }, avance: { completo: false },
+      lineas: [lin("L1", "encontrado", { porId: "u2", piso: 2, puntaje: 2, resueltoTs: "2026-11-23T16:30:00Z" }), lin("L2", "buscando", { porId: "u2", iniciadoTs: "2026-11-23T16:20:00Z" }), lin("L3", "pendiente")] },
+  ];
+  const filasDia = [
+    { code: "DP-1", lineaId: "L1", estado: "encontrado", piso: 2, puntaje: 2, porId: "u2", iniciadoTs: "2026-11-23T16:25:00Z", resueltoTs: "2026-11-23T16:30:00Z" },
+    { code: "DP-0", lineaId: "L1", estado: "encontrado", piso: 3, puntaje: 3, porId: "u1", iniciadoTs: "2026-11-23T14:00:00Z", resueltoTs: "2026-11-23T14:10:00Z" },
+  ];
+  const r = armarSupervisor({ activas, filasDia, listasHoy: 4, nombres: { u1: "Rosa", u2: "Luis" }, ahora, zona: "America/Lima" });
+
+  it("la cola: pendientes, en búsqueda y sin tocar", () => {
+    assert.deepEqual(r.cola, { proformas: 2, listasParaPasar: 0, lineasPendientes: 4, enBusqueda: 2, sinTocar: 2, listasHoy: 4 });
+    assert.equal(r.hoy.lineas, 2);
+    assert.equal(r.hoy.puntaje, 5);
+  });
+  it("quién busca qué, lo que más lleva primero", () => {
+    assert.deepEqual(r.enCurso.map((x) => [x.code, x.lineaId, x.persona, x.desdeMs]), [["DP-1", "L2", "Luis", 2400000], ["DP-2", "L2", "Rosa", 600000]]);
+    const luis = r.personas.find((p) => p.nombre === "Luis");
+    assert.deepEqual([luis.buscando, luis.resueltasHoy, luis.puntajeHoy], [1, 1, 2]);
+    assert.equal(r.personas.find((p) => p.nombre === "Rosa").ultimaTs, "2026-11-23T16:50:00.000Z");
+  });
+  it("proformas: la que más espera va primero, con su avance y quiénes la trabajan", () => {
+    assert.deepEqual(r.proformas.map((p) => [p.code, p.resueltas, p.buscando, p.sinTocar, p.porcentaje, p.personas]), [["DP-1", 1, 1, 1, 33, ["Luis"]], ["DP-2", 0, 1, 1, 0, ["Rosa"]]]);
+    assert.equal(r.proformas[0].esperaMs, 3 * 3600 * 1000);
+    assert.equal(r.proformas[0].lineas[0].persona, "Luis");
+  });
+  it("ritmo de la última hora, estimado de lo que queda y horas con actividad (en hora de Lima)", () => {
+    assert.deepEqual(r.ritmo, { ultimaHora: 1, restanteMin: 240 });
+    assert.deepEqual(r.porHora.map((h) => [h.hora, h.lineas]), [["09", 1], ["11", 1]]);
+  });
+  it("sin actividad no inventa ritmo y no falla", () => {
+    const v = armarSupervisor({ ahora });
+    assert.deepEqual([v.cola.lineasPendientes, v.ritmo.restanteMin, v.enCurso.length, v.proformas.length], [0, null, 0, 0]);
+  });
+});

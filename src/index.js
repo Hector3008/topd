@@ -111,6 +111,11 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: [...new Set(estados)], limite: 100, recientes: true, conPagos: true }) });
     } catch (e) { responderError(e, res, next); }
   });
+  // Vista del supervisor: cómo va hoy el almacén (se consulta cada pocos segundos)
+  const deSupervision = [autenticar(), requierePermiso(ESTACIONES.supervision), eventos.middleware({ estacion: "supervision" })];
+  router.get("/supervision", ...deSupervision, async (_req, res, next) => {
+    try { res.json(await picking.supervisorPicking()); } catch (e) { responderError(e, res, next); }
+  });
   // Puntajes y tiempos del almacén (?desde=AAAA-MM-DD&hasta=AAAA-MM-DD)
   router.get("/reportes/picking", ...deBandeja, async (req, res, next) => {
     try { res.json(await picking.reportePicking({ desde: req.query.desde, hasta: req.query.hasta })); } catch (e) { responderError(e, res, next); }

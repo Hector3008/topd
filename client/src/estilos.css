@@ -122,3 +122,11 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .tabla-rep table { border-collapse: collapse; width: 100%; }
 .tabla-rep th, .tabla-rep td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--borde, #d8d8d8); white-space: nowrap; }
 .tabla-rep th { font-size: .8rem; color: var(--suave, #666); font-weight: 600; }
+
+/* Supervisión */
+.lista-sup { list-style: none; padding: 0; margin: 0 0 16px; }
+.lista-sup li { padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.lista-sup li.lenta { color: var(--aviso); font-weight: 600; }
+.horas { list-style: none; padding: 0; margin: 0 0 16px; }
+.horas li { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: .9rem; }
+.hora-barra { display: block; height: 10px; min-width: 4px; max-width: 40%; background: var(--primario); border-radius: 3px; }

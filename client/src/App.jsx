@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ErrorApi, mensajeDeError, urlCuenta } from "./api.js";
-import { puedeAlmacen, puedeBandeja, puedeConfigurar, puedeCrear, puedeRevisar } from "./logica.js";
+import { puedeAlmacen, puedeBandeja, puedeConfigurar, puedeCrear, puedeRevisar, puedeSupervisar } from "./logica.js";
 import Almacen from "./Almacen.jsx";
 import NuevaProforma from "./NuevaProforma.jsx";
 import Revision from "./Revision.jsx";
@@ -8,6 +8,7 @@ import Bandeja from "./Bandeja.jsx";
 import Proformas from "./Proformas.jsx";
 import Config from "./Config.jsx";
 import Reportes from "./Reportes.jsx";
+import Supervision from "./Supervision.jsx";
 
 // Sin enrutador (como tobt y cuenta): la vista sale del estado. Sin sesión, sin empresa o con contraseña temporal
 // se manda a `cuenta`, que lo resuelve.
@@ -16,7 +17,7 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [problema, setProblema] = useState(null); // { texto, irACuenta }
   const [editando, setEditando] = useState(null); // código de la proforma que se está corrigiendo
-  const [vista, setVista] = useState(["nueva", "proformas", "almacen", "revision", "bandeja", "reportes", "config"].find((v) => location.hash === `#${v}`) ?? null);
+  const [vista, setVista] = useState(["nueva", "proformas", "almacen", "revision", "bandeja", "supervision", "reportes", "config"].find((v) => location.hash === `#${v}`) ?? null);
 
   const cargarYo = useCallback(async () => {
     try {
@@ -55,6 +56,7 @@ export default function App() {
     ["almacen", "Almacén", puedeAlmacen(yo.permisos)],
     ["revision", "Revisión", puedeRevisar(yo.permisos)],
     ["bandeja", "Bandeja", puedeBandeja(yo.permisos)],
+    ["supervision", "Supervisión", puedeSupervisar(yo.permisos)],
     ["reportes", "Reportes", puedeBandeja(yo.permisos)],
     ["config", "Configuración", puedeConfigurar(yo.permisos)],
   ].filter(([, , ok]) => ok);
@@ -69,7 +71,7 @@ export default function App() {
     );
 
   // La vista elegida si tiene permiso; si no, la primera estación del rol (almacén antes que crear, para quien hace las dos)
-  const orden = ["almacen", "revision", "bandeja", "nueva", "proformas", "reportes", "config"];
+  const orden = ["almacen", "revision", "bandeja", "nueva", "proformas", "supervision", "reportes", "config"];
   const actual = estaciones.some(([k]) => k === vista) ? vista : orden.find((k) => estaciones.some(([e]) => e === k));
   return (
     <main className="app">
@@ -85,6 +87,7 @@ export default function App() {
       {actual === "almacen" && <Almacen />}
       {actual === "revision" && <Revision />}
       {actual === "bandeja" && <Bandeja />}
+      {actual === "supervision" && <Supervision />}
       {actual === "reportes" && <Reportes />}
       {actual === "config" && <Config />}
       {actual === "proformas" && (editando

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, duracion, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, puedeSupervisar, duracion, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -188,5 +188,12 @@ describe("duración para el reporte", () => {
     assert.equal(duracion(3900000), "1 h 05 min");
     assert.equal(duracion(null), "—");
     assert.equal(duracion(-5), "—");
+  });
+});
+
+describe("supervisión", () => {
+  it("tiene su propio permiso", () => {
+    assert.equal(puedeSupervisar(["estacion:supervision"]), true);
+    assert.equal(puedeSupervisar(["estacion:bandeja"]), false);
   });
 });
