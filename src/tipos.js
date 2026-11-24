@@ -22,6 +22,7 @@ export const ESTACIONES = Object.freeze({
   produccion: "estacion:produccion",
   revision: "estacion:revision",
   bandeja: "estacion:bandeja",
+  configuracion: "estacion:configuracion", // pisos, puntajes y emisores de la empresa
 });
 
 export const MOTIVOS_DESCARTE = ["error_de_carga", "duplicada", "cliente_desistio", "otro"];

@@ -1,5 +1,6 @@
 import { ErrorDocumento } from "core";
 import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
+import { configPorDefecto, limpiarConfig, puntajesDe, copiaDeEmisor } from "./config.js";
 import {
   ErrorPicking, PUNTAJES_PISO, lineasDelDocumento, aplicarMarca, combinarAvance, resumenAvance,
 } from "./picking.js";
@@ -13,8 +14,10 @@ export const ESTADOS_EDITABLES = ["borrador", "cotizacion", "orden_salida"];
  * Servicio de picking. Todas las operaciones corren dentro de la empresa activa (conEmpresa),
  * que deja el middleware de permisos del núcleo.
  */
-export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PISO }) {
+export function crearServicioPicking({ core, Picking, Config = null, puntajesPiso = PUNTAJES_PISO }) {
   const { documentos, modelos } = core;
+  // Estados a los que se puede mandar una proforma desde la estación de creación (el motor valida el permiso y el motivo)
+  const DESTINOS = ["cotizacion", "orden_salida", "descartado", "rechazada", "vencida"];
 
   async function cargarProforma(code) {
     const doc = await documentos.obtener({ code });
@@ -36,6 +39,28 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
   }
 
   const servicio = {
+    /** Configuración vigente de la empresa (pisos, puntajes, emisores); si nunca se guardó, la de por defecto. */
+    async config() {
+      const base = configPorDefecto(puntajesPiso);
+      if (!Config) return base;
+      const fila = await Config.findOne({ clave: "topd" }).lean();
+      return fila?.datos ? { ...base, ...fila.datos } : base;
+    },
+
+    /** Lo que necesita una pantalla del almacén para pintar los pisos: tabla { piso: puntaje } y extras. */
+    async puntajes() {
+      const c = await servicio.config();
+      return { puntajesPiso: puntajesDe(c), extras: c.extras };
+    },
+
+    async guardarConfig({ entrada, usuarioId }) {
+      if (!Config) throw new ErrorPicking("CONFIG_NO_DISPONIBLE", "La configuración no está disponible");
+      const nueva = limpiarConfig(entrada, await servicio.config());
+      await Config.findOneAndUpdate({ clave: "topd" }, { $set: { datos: nueva, porId: usuarioId } }, { upsert: true, returnDocument: "after", lean: true });
+      await registrarEvento("config.guardada", { code: undefined, usuarioId, estacion: "configuracion", datos: { pisos: nueva.pisos.length, emisores: nueva.emisores.length, extras: nueva.extras } });
+      return nueva;
+    },
+
     /** Proformas en uno o más estados, con el avance de cada línea (la más antigua primero, salvo `recientes`). */
     async listar({ estados = [ESTADO_PICKING], limite = 100, recientes = false, conPagos = false } = {}) {
       const docs = await documentos.listar({ tipo: TIPO_PROFORMA.tipo, estado: estados, limite });
@@ -45,7 +70,7 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
         const lineas = combinarAvance(lineasDelDocumento(d), filas.filter((f) => f.code === d.code));
         return {
           code: d.code, estado: d.estado, version: d.version, editable: ESTADOS_EDITABLES.includes(d.estado), creadaTs: d.createdAt, actualizadaTs: d.updatedAt,
-          cabecera: d.payload?.doc?.cabecera ?? {}, origenCarga: d.payload?.doc?.origenCarga ?? "manual",
+          cabecera: d.payload?.doc?.cabecera ?? {}, origenCarga: d.payload?.doc?.origenCarga ?? "manual", emisor: d.payload?.doc?.emisor ?? null,
           lineas, avance: resumenAvance(lineas),
           // Los pagos solo salen donde hace falta (bandeja): el almacén no los necesita
           ...(conPagos && { pagos: d.payload?.doc?.pagos ?? [] }),
@@ -74,7 +99,8 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
       if (!linea) throw new ErrorPicking("LINEA_NO_ENCONTRADA", `La proforma ${code} no tiene la línea ${lineaId} (o está anulada)`);
 
       const actual = await Picking.findOne({ code, lineaId }).lean();
-      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso });
+      const cfg = await servicio.config();
+      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), extras: cfg.extras });
       const guardada = await Picking.findOneAndUpdate(
         { code, lineaId },
         { $set: { ...fila, porId: usuarioId } },
@@ -112,7 +138,7 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
       const d = doc.payload?.doc ?? {};
       return {
         code: doc.code, estado: doc.estado, version: doc.version, editable: ESTADOS_EDITABLES.includes(doc.estado),
-        cabecera: d.cabecera ?? {}, origenCarga: d.origenCarga ?? "manual", pagos: d.pagos ?? [],
+        cabecera: d.cabecera ?? {}, origenCarga: d.origenCarga ?? "manual", pagos: d.pagos ?? [], emisor: d.emisor ?? null,
         lineas: (d.lineas ?? []).map((l, i) => ({ ...l, id: l.id ?? `L${i + 1}` })),
       };
     },
@@ -122,7 +148,7 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
      * se conservan; las sin id son nuevas. El avance del almacén se reinicia solo en las líneas cuyo fondo cambió
      * (cantidad, descripción, tachada) o que se quitaron: precio y comentario no obligan a buscar de nuevo.
      */
-    async editar({ code, cabecera = {}, lineas, pagos, esperaVersion, usuarioId }) {
+    async editar({ code, cabecera = {}, lineas, pagos, emisorId, esperaVersion, usuarioId }) {
       if (!Number.isInteger(esperaVersion))
         throw new ErrorPicking("VERSION_REQUERIDA", "Falta la versión que se está editando");
       const doc = await cargarProforma(code);
@@ -131,7 +157,9 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
       const d = doc.payload?.doc ?? {};
       const anteriores = (d.lineas ?? []).map((l, i) => ({ ...l, id: l.id ?? `L${i + 1}` }));
       const ahora = new Date();
-      const nuevas = limpiarLineas(lineas, anteriores, ahora);
+      const nuevas = limpiarLineas(lineas, anteriores, ahora, { permitirVacio: doc.estado === "borrador" });
+      // emisorId sin definir conserva el emisor; "" lo quita; un id lo cambia (copia de sus datos de hoy)
+      const emisorNuevo = emisorId === undefined ? (d.emisor ?? null) : copiaDeEmisor(await servicio.config(), emisorId);
       const cabeceraNueva = limpiarCabecera(cabecera);
       const pagosNuevos = limpiarPagos(pagos);
 
@@ -148,12 +176,12 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
       const camposCambiados = [...new Set([...Object.keys(d.cabecera ?? {}), ...Object.keys(cabeceraNueva)])]
         .filter((k) => (d.cabecera ?? {})[k] !== cabeceraNueva[k]);
       const sinCambios = !camposCambiados.length && !modificadas && !agregadas && !reiniciar.some((id) => !quedan.has(id))
-        && JSON.stringify(d.pagos ?? []) === JSON.stringify(pagosNuevos);
+        && JSON.stringify(d.pagos ?? []) === JSON.stringify(pagosNuevos) && JSON.stringify(d.emisor ?? null) === JSON.stringify(emisorNuevo);
       if (sinCambios) return { code, estado: doc.estado, version: doc.version, sinCambios: true, reiniciadas: [] };
 
       const nuevo = await documentos.nuevaVersion({
         code, usuarioId, esperaVersion,
-        doc: { ...d, cabecera: cabeceraNueva, lineas: nuevas, pagos: pagosNuevos },
+        doc: { ...d, cabecera: cabeceraNueva, lineas: nuevas, pagos: pagosNuevos, emisor: emisorNuevo },
       });
       if (reiniciar.length) await Picking.deleteMany({ code, lineaId: { $in: reiniciar } });
       await registrarEvento("proforma.editada", {
@@ -163,16 +191,39 @@ export function crearServicioPicking({ core, Picking, puntajesPiso = PUNTAJES_PI
       return { code, estado: nuevo.estado, version: nuevo.version, reiniciadas: reiniciar };
     },
 
-    /** Crea la proforma ya lista para picking (mínimo hasta 5.72 y el OCR). Requiere el permiso de creación. */
-    async crearOrden({ cabecera = {}, lineas, pagos, usuarioId, permisos, origen = "manual" }) {
+    /**
+     * Crea la proforma. `destino` dice hasta dónde llega: «borrador» (se guarda sin mandar a nadie; puede ir incompleta),
+     * «cotizacion» (se ofrece al cliente) u «orden_salida» (pasa al almacén; es lo de siempre). Requiere el permiso de creación.
+     */
+    async crearOrden({ cabecera = {}, lineas, pagos, emisorId, destino = "orden_salida", usuarioId, permisos, origen = "manual" }) {
       if (!["manual", "ocr:impreso", "ocr:manuscrito", "archivo:xlsx", "archivo:pdf"].includes(origen))
         throw new ErrorPicking("ORIGEN_INVALIDO", "Origen de carga no válido");
-      const limpias = limpiarLineas(lineas);
+      if (!["borrador", "cotizacion", "orden_salida"].includes(destino))
+        throw new ErrorPicking("DESTINO_INVALIDO", "El destino debe ser borrador, cotizacion u orden_salida");
+      const limpias = limpiarLineas(lineas, null, undefined, { permitirVacio: destino === "borrador" });
+      const emisor = copiaDeEmisor(await servicio.config(), emisorId);
       const doc = await documentos.crear({
-        tipo: TIPO_PROFORMA.tipo, usuarioId, doc: { cabecera: limpiarCabecera(cabecera), lineas: limpias, pagos: limpiarPagos(pagos), origenCarga: origen },
+        tipo: TIPO_PROFORMA.tipo, usuarioId,
+        doc: { cabecera: limpiarCabecera(cabecera), lineas: limpias, pagos: limpiarPagos(pagos), emisor, origenCarga: origen },
       });
-      await documentos.transicionar({ code: doc.code, a: "orden_salida", usuarioId, permisos });
-      return doc.code;
+      if (destino !== "borrador") await documentos.transicionar({ code: doc.code, a: destino, usuarioId, permisos });
+      return { code: doc.code, estado: destino };
+    },
+
+    /**
+     * Mueve una proforma entre estados desde la estación de creación: mandar a cotización o al almacén, y cerrarla sin
+     * vender (descartada, rechazada, vencida) con su motivo `{ codigo, detalle? }`. El motor valida la transición,
+     * el permiso y el motivo; aquí se exige que haya líneas para ofrecerla o mandarla al almacén.
+     */
+    async cambiarEstado({ code, a, motivo, esperaVersion, usuarioId, permisos }) {
+      if (!DESTINOS.includes(a)) throw new ErrorPicking("DESTINO_INVALIDO", `No se puede pasar a '${a}' desde aquí`, { validos: DESTINOS });
+      const doc = await cargarProforma(code);
+      if (!ESTADOS_EDITABLES.includes(doc.estado))
+        throw new ErrorPicking("ESTADO_NO_EDITABLE", `La proforma ${code} está en '${doc.estado}': ya no se puede mover desde aquí`);
+      if ((a === "cotizacion" || a === "orden_salida") && !lineasDelDocumento(doc).length)
+        throw new ErrorPicking("LINEAS_REQUERIDAS", "Agrega al menos una línea antes de continuar");
+      const nuevo = await documentos.transicionar({ code, a, ...(motivo && { motivo }), usuarioId, permisos, esperaVersion: esperaVersion ?? doc.version });
+      return { code, estado: nuevo.estado, version: nuevo.version };
     },
   };
   return servicio;
@@ -193,7 +244,8 @@ const CAMPOS_CABECERA = [
  * Líneas de la proforma. Con `existentes` (edición) las que traen un `id` conocido lo conservan y las demás reciben
  * uno nuevo que no se repite; `modificadaTs` marca lo que cambió o se agregó para que el almacén lo note.
  */
-export function limpiarLineas(lineas, existentes = null, ahora = new Date()) {
+export function limpiarLineas(lineas, existentes = null, ahora = new Date(), { permitirVacio = false } = {}) {
+  if (permitirVacio && (lineas == null || (Array.isArray(lineas) && lineas.length === 0))) return []; // un borrador puede ir sin líneas
   if (!Array.isArray(lineas) || lineas.length === 0)
     throw new ErrorPicking("LINEAS_REQUERIDAS", "La proforma necesita al menos una línea");
   if (lineas.length > 200) throw new ErrorPicking("LINEAS_DEMASIADAS", "Hasta 200 líneas por proforma");

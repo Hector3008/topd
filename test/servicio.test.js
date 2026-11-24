@@ -18,9 +18,14 @@ function entorno() {
         if (esperaVersion !== undefined && esperaVersion !== d.version) { const e = new Error("conflicto"); e.codigo = "CONFLICTO_VERSION"; throw e; }
         d.payload = { ...d.payload, doc }; d.version += 1; return d;
       },
-      async transicionar({ code, a, esperaVersion }) { const d = docs.get(code); if (esperaVersion !== undefined && esperaVersion !== d.version) throw new Error("conflicto"); d.estado = a; return d; },
+      async transicionar({ code, a, motivo, esperaVersion }) { const d = docs.get(code); if (esperaVersion !== undefined && esperaVersion !== d.version) throw new Error("conflicto"); d.estado = a; if (motivo) d.motivo = motivo; return d; },
     },
     modelos: { Evento: { async create(e) { eventos.push(e); } } },
+  };
+  let config = null;
+  const Config = {
+    findOne: () => ({ lean: async () => config }),
+    async findOneAndUpdate(_f, { $set }) { config = { clave: "topd", ...$set }; return config; },
   };
   const Picking = {
     find: (f) => ({ lean: async () => filas.filter((x) => (f.code.$in ? f.code.$in.includes(x.code) : x.code === f.code)) }),
@@ -35,7 +40,12 @@ function entorno() {
       Object.assign(x, $set); return x;
     },
   };
-  return { svc: crearServicioPicking({ core, Picking }), docs, filas, eventos };
+  const svc = crearServicioPicking({ core, Picking, Config });
+  // Casi todas las pruebas solo necesitan el código; la forma completa { code, estado } es svc.crearOrdenCompleta
+  const crearOrdenCompleta = svc.crearOrden;
+  svc.crearOrdenCompleta = crearOrdenCompleta;
+  svc.crearOrden = async (a) => (await crearOrdenCompleta(a)).code;
+  return { svc, docs, filas, eventos, config };
 }
 const falla = (p, codigo) => assert.rejects(p, (e) => e instanceof ErrorPicking && e.codigo === codigo);
 const lineas = [{ cantidad: 1, descripcion: "Alternador" }, { cantidad: 2, descripcion: "Portadiodo" }, { cantidad: 1, descripcion: "Conector", anulada: true }];
@@ -235,5 +245,83 @@ describe("proformas con datos de catálogo (carga desde archivo)", () => {
     assert.equal(e.filas.length, 1);
     assert.equal((await e.svc.obtener({ code })).lineas[0].proveedor, "TORQ");
     await falla(e.svc.crearOrden({ origen: "archivo:csv", lineas: [{ cantidad: 1, descripcion: "x" }] }), "ORIGEN_INVALIDO");
+  });
+});
+
+describe("configuración, emisor, borrador y cotización", () => {
+  const una = [{ cantidad: 1, descripcion: "Alternador" }];
+
+  it("guarda la configuración y el almacén puntúa con ella", async () => {
+    const e = entorno();
+    assert.deepEqual((await e.svc.puntajes()).puntajesPiso, { 1: 1, 2: 2, 3: 3, 4: 4 });
+    await e.svc.guardarConfig({ entrada: { pisos: [{ piso: 1, puntaje: 10 }, { piso: 2, puntaje: 20 }], extras: { taller: 5 } }, usuarioId: "u9" });
+    assert.deepEqual(await e.svc.puntajes(), { puntajesPiso: { 1: 10, 2: 20 }, extras: { taller: 5, muestra: 0, foto: 0 } });
+    const code = await e.svc.crearOrden({ lineas: una });
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 2, taller: true }, usuarioId: "u2" });
+    assert.equal(e.filas[0].puntaje, 25);
+    await falla(e.svc.marcar({ code, lineaId: "L1", cambio: { piso: 4 }, usuarioId: "u2" }), "PISO_INVALIDO");
+    assert.equal(e.eventos.filter((x) => x.tipo === "config.guardada").length, 1);
+    await falla(e.svc.guardarConfig({ entrada: { pisos: [] }, usuarioId: "u9" }), "CONFIG_INVALIDA");
+  });
+
+  it("cambiar la tabla no reescribe el puntaje ya medido", async () => {
+    const e = entorno();
+    const code = await e.svc.crearOrden({ lineas: una });
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 3 }, usuarioId: "u2" });
+    await e.svc.guardarConfig({ entrada: { pisos: [{ piso: 3, puntaje: 99 }] }, usuarioId: "u9" });
+    assert.equal(e.filas[0].puntaje, 3);
+  });
+
+  it("el emisor se copia al documento y editar la configuración no lo altera", async () => {
+    const e = entorno();
+    const cfg = await e.svc.guardarConfig({ entrada: { emisores: [{ nombre: "Repuestos Norte", ruc: "20123456789" }] }, usuarioId: "u9" });
+    const id = cfg.emisores[0].id;
+    await falla(e.svc.crearOrden({ lineas: una, emisorId: "E7" }), "EMISOR_INVALIDO");
+    const code = await e.svc.crearOrden({ lineas: una, emisorId: id });
+    assert.equal(e.docs.get(code).payload.doc.emisor.nombre, "Repuestos Norte");
+    await e.svc.guardarConfig({ entrada: { emisores: [{ id, nombre: "Otro nombre" }] }, usuarioId: "u9" });
+    assert.equal((await e.svc.obtener({ code })).emisor.nombre, "Repuestos Norte");
+    // editar sin emisorId lo conserva; con "" lo quita; con id lo renueva
+    const v = (await e.svc.obtener({ code })).version;
+    const l = (await e.svc.obtener({ code })).lineas;
+    await e.svc.editar({ code, lineas: l, esperaVersion: v, usuarioId: "u1" });
+    assert.equal(e.docs.get(code).version, v);
+    await e.svc.editar({ code, lineas: l, emisorId: id, esperaVersion: v, usuarioId: "u1" });
+    assert.equal(e.docs.get(code).payload.doc.emisor.nombre, "Otro nombre");
+    await e.svc.editar({ code, lineas: l, emisorId: "", esperaVersion: v + 1, usuarioId: "u1" });
+    assert.equal(e.docs.get(code).payload.doc.emisor, null);
+    assert.equal((await e.svc.listar({ estados: ["orden_salida"] }))[0].emisor, null);
+  });
+
+  it("borrador sin líneas, cotización y envío al almacén", async () => {
+    const e = entorno();
+    const b = await e.svc.crearOrdenCompleta({ cabecera: { cliente: "Pedalco" }, lineas: [], destino: "borrador" });
+    assert.equal(b.estado, "borrador");
+    assert.equal(e.docs.get(b.code).estado, "borrador");
+    assert.equal((await e.svc.activas()).length, 0); // el almacén no lo ve
+    await falla(e.svc.cambiarEstado({ code: b.code, a: "orden_salida", permisos: [] }), "LINEAS_REQUERIDAS");
+    await falla(e.svc.cambiarEstado({ code: b.code, a: "cerrada", permisos: [] }), "DESTINO_INVALIDO");
+    // el borrador se completa editándolo
+    const v = (await e.svc.obtener({ code: b.code })).version;
+    await e.svc.editar({ code: b.code, cabecera: { cliente: "Pedalco" }, lineas: una, esperaVersion: v, usuarioId: "u1" });
+    assert.equal((await e.svc.cambiarEstado({ code: b.code, a: "cotizacion", permisos: [] })).estado, "cotizacion");
+    assert.equal((await e.svc.obtener({ code: b.code })).editable, true);
+    assert.equal((await e.svc.cambiarEstado({ code: b.code, a: "orden_salida", permisos: [] })).estado, "orden_salida");
+    assert.equal((await e.svc.activas()).length, 1);
+    await falla(e.svc.crearOrden({ lineas: [], destino: "orden_salida" }), "LINEAS_REQUERIDAS");
+    await falla(e.svc.crearOrden({ lineas: una, destino: "cerrada" }), "DESTINO_INVALIDO");
+    // un borrador editado no puede quedar sin líneas una vez que sale de borrador
+    const c = await e.svc.crearOrdenCompleta({ lineas: una, destino: "cotizacion" });
+    assert.equal(c.estado, "cotizacion");
+    await falla(e.svc.editar({ code: c.code, lineas: [], esperaVersion: 1, usuarioId: "u1" }), "LINEAS_REQUERIDAS");
+  });
+
+  it("cerrar sin vender lleva motivo y ya no se puede mover", async () => {
+    const e = entorno();
+    const { code } = await e.svc.crearOrdenCompleta({ lineas: una, destino: "cotizacion" });
+    const r = await e.svc.cambiarEstado({ code, a: "rechazada", motivo: { codigo: "precio", detalle: "muy caro" }, permisos: [] });
+    assert.equal(r.estado, "rechazada");
+    assert.deepEqual(e.docs.get(code).motivo, { codigo: "precio", detalle: "muy caro" });
+    await falla(e.svc.cambiarEstado({ code, a: "orden_salida", permisos: [] }), "ESTADO_NO_EDITABLE");
   });
 });

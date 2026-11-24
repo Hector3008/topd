@@ -17,6 +17,7 @@ export const puedeAlmacen = (p) => permite(p, "estacion:produccion");
 export const puedeCrear = (p) => permite(p, "estacion:creacion");
 export const puedeRevisar = (p) => permite(p, "estacion:revision");
 export const puedeBandeja = (p) => permite(p, "estacion:bandeja");
+export const puedeConfigurar = (p) => permite(p, "estacion:configuracion");
 
 export const ESTADOS_PROFORMA = {
   borrador: "Borrador", cotizacion: "Cotización", orden_salida: "En almacén", orden_revision: "Por revisar",
@@ -153,7 +154,7 @@ export const sumaDelFormulario = (lineas) =>
   Math.round(lineas.filter((l) => !l.anulada).reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0), 0) * 100) / 100;
 
 /** Validación del formulario de nueva proforma; devuelve { cabecera, lineas } limpias o { error }. */
-export function prepararProforma({ cabecera = {}, lineas, pagos = [] }) {
+export function prepararProforma({ cabecera = {}, lineas, pagos = [] }, { permitirVacio = false } = {}) {
   const limpias = [];
   for (const [i, l] of lineas.entries()) {
     const vacia = !String(l.cantidad ?? "").trim() && !String(l.descripcion ?? "").trim() && !String(l.precioUnitario ?? "").trim();
@@ -167,7 +168,7 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }) {
     if (precio !== "" && !(Number(precio) >= 0)) return { error: `El precio de la línea ${i + 1} no es válido.` };
     limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
   }
-  if (!limpias.length) return { error: "Agrega al menos una línea." };
+  if (!limpias.length && !permitirVacio) return { error: "Agrega al menos una línea." };
   const limpia = {};
   for (const [k, v] of Object.entries(cabecera)) if (typeof v === "string" && v.trim()) limpia[k] = v.trim();
   const pagosLimpios = [];
@@ -179,6 +180,24 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }) {
     pagosLimpios.push({ cuenta: String(p.cuenta).trim(), monto, operacion: String(p.operacion ?? "").trim() });
   }
   return { cabecera: limpia, lineas: limpias, pagos: pagosLimpios };
+}
+
+/** Motivos para cerrar una proforma sin vender (clave que guarda el servidor → texto). */
+export const MOTIVOS = {
+  descartado: { titulo: "Descartar", motivos: [["error_de_carga", "Error de carga"], ["duplicada", "Duplicada"], ["cliente_desistio", "El cliente desistió"], ["otro", "Otro"]] },
+  rechazada: { titulo: "Rechazada por el cliente", motivos: [["precio", "Precio"], ["plazo", "Plazo"], ["stock", "Stock"], ["eligio_otro_proveedor", "Eligió otro proveedor"], ["otro", "Otro"]] },
+  vencida: { titulo: "Vencida", motivos: [["sin_respuesta", "Sin respuesta"], ["vigencia_agotada", "Vigencia agotada"], ["otro", "Otro"]] },
+};
+/** Cierres que admite cada estado (un borrador solo se descarta; una cotización se rechaza o vence). */
+export const CIERRES_POR_ESTADO = { borrador: ["descartado"], cotizacion: ["rechazada", "vencida"], orden_salida: ["descartado"] };
+
+/** Arma la configuración que se envía a partir del formulario (textos → números); el servidor vuelve a validar. */
+export function configParaEnviar(f) {
+  return {
+    pisos: f.pisos.map((p) => ({ piso: Number(p.piso), puntaje: p.puntaje })),
+    extras: { taller: f.extras.taller, muestra: f.extras.muestra, foto: f.extras.foto },
+    emisores: f.emisores.filter((e) => String(e.nombre ?? "").trim() || e.id),
+  };
 }
 
 /** Búsqueda de la bandeja: por código (DP-…), cliente, vendedor o la referencia del papel. */

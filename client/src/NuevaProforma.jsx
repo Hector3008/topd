@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError, urlPlantilla } from "./api.js";
-import { SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
+import { CIERRES_POR_ESTADO, MOTIVOS, SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
 
 const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
 
@@ -41,6 +41,12 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
   const [version, setVersion] = useState(null);
   const [cargando, setCargando] = useState(editando);
   const [estado, setEstado] = useState(null);
+  // Emisor (quién firma) y cierre sin vender
+  const [emisores, setEmisores] = useState([]);
+  const [emisorId, setEmisorId] = useState("");
+  const [emisorInicial, setEmisorInicial] = useState(""); // el que traía la proforma: solo se envía si cambia
+  const [emisorGuardado, setEmisorGuardado] = useState(null);
+  const [cierre, setCierre] = useState({ a: "", codigo: "", detalle: "" });
 
   useEffect(() => {
     if (!editando) return;
@@ -50,11 +56,13 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
       const f = formularioDeProforma(p);
       setCabecera(f.cabecera); setLineas(f.lineas.length ? f.lineas : [vacia()]); setPagos(f.pagos);
       setVersion(p.version); setEstado(p.estado); setOrigen(p.origenCarga ?? "manual");
+      setEmisorId(p.emisor?.id ?? ""); setEmisorInicial(p.emisor?.id ?? ""); setEmisorGuardado(p.emisor ?? null);
       if (!p.editable) setError("Esta proforma ya salió del almacén y no se puede editar.");
     }, (err) => vivo && setError(mensajeDeError(err))).finally(() => vivo && setCargando(false));
     return () => { vivo = false; };
   }, [codigo, editando]);
 
+  useEffect(() => { api.proformas.opciones().then((d) => setEmisores(d.emisores ?? []), () => {}); }, []);
   useEffect(() => { if (editando) return; api.ocr().then((d) => setOcrActivo(d.activo), () => setOcrActivo(false)); }, []);
 
   const cambiar = (i, campo, valor) => setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: valor, dudoso: campo === "anulada" ? l.dudoso : false } : l)));
@@ -110,26 +118,43 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
     setCabecera(cabeceraVacia()); setLineas([vacia(), vacia(), vacia()]); setPagos([]); setFoto(null); setLectura(null); setOrigen("manual");
   }
 
-  async function enviar(e) {
-    e.preventDefault();
-    const r = prepararProforma({ cabecera, lineas, pagos });
+  // Guarda (crea o corrige) y, si se pide, mueve la proforma: «borrador», «cotizacion» u «orden_salida».
+  async function enviar(destino = "orden_salida") {
+    const esBorrador = editando ? estado === "borrador" : destino === "borrador";
+    const r = prepararProforma({ cabecera, lineas, pagos }, { permitirVacio: esBorrador });
     if (r.error) return setError(r.error);
     setEnviando(true); setError("");
-    if (editando) {
-      try {
-        const resp = await api.proformas.editar(codigo, { cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, version });
-        alTerminar?.({ code: codigo, ...resp });
-      } catch (err) { setError(mensajeDeError(err)); }
-      finally { setEnviando(false); }
-      return;
-    }
     try {
-      const { code } = await api.proformas.crear({ cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, origen });
-      setCreada(code);
-      limpiar();
+      if (!editando) {
+        const { code, estado: nuevo } = await api.proformas.crear({ cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, origen, emisorId, destino });
+        setCreada({ code, estado: nuevo });
+        limpiar();
+        return;
+      }
+      const cuerpo = { cabecera: r.cabecera, lineas: r.lineas, pagos: r.pagos, version };
+      if (emisorId !== emisorInicial) cuerpo.emisorId = emisorId;
+      const resp = await api.proformas.editar(codigo, cuerpo);
+      if (destino && destino !== estado && ["cotizacion", "orden_salida"].includes(destino))
+        await api.proformas.cambiarEstado(codigo, { a: destino, version: resp.version });
+      alTerminar?.({ code: codigo, ...resp });
     } catch (err) { setError(mensajeDeError(err)); }
     finally { setEnviando(false); }
   }
+
+  async function cerrarSinVender() {
+    if (!cierre.a || !cierre.codigo) return setError("Elige cómo se cierra y el motivo.");
+    setEnviando(true); setError("");
+    try {
+      await api.proformas.cambiarEstado(codigo, { a: cierre.a, version, motivo: { codigo: cierre.codigo, ...(cierre.detalle.trim() && { detalle: cierre.detalle.trim() }) } });
+      alTerminar?.({ code: codigo });
+    } catch (err) { setError(mensajeDeError(err)); }
+    finally { setEnviando(false); }
+  }
+
+  const cierres = CIERRES_POR_ESTADO[estado] ?? [];
+  // El emisor actual de la proforma aparece aunque se haya desactivado después
+  const opcionesEmisor = emisorGuardado && !emisores.some((x) => x.id === emisorGuardado.id) ? [...emisores, emisorGuardado] : emisores;
+  const textoCreada = { borrador: "guardada como borrador", cotizacion: "guardada como cotización", orden_salida: "creada: ya está en el almacén" };
 
   return (
     <section aria-labelledby="t-nueva">
@@ -141,7 +166,7 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
       {cargando && <p className="cargando">Cargando…</p>}
       {!editando && creada && (
         <p className="aviso-ok" role="status">
-          Creada {creada}: ya está en el almacén. {alCrear && <button type="button" className="enlace-btn" onClick={alCrear}>Ver almacén</button>}
+          {creada.code} {textoCreada[creada.estado]}. {creada.estado === "orden_salida" && alCrear && <button type="button" className="enlace-btn" onClick={alCrear}>Ver almacén</button>}
         </p>
       )}
 
@@ -174,11 +199,19 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
             <figcaption>Compara con el papel y corrige lo que haga falta.</figcaption>
           </figure>
         )}
-        <form onSubmit={enviar} className="form" hidden={cargando}>
+        <form onSubmit={(e) => { e.preventDefault(); enviar(editando ? null : "orden_salida"); }} className="form" hidden={cargando}>
           {lectura?.avisos?.length > 0 && (
             <ul className="avisos" role="status">
               {lectura.avisos.map((a, i) => <li key={i}>{a.mensaje}</li>)}
             </ul>
+          )}
+          {(opcionesEmisor.length > 0 || emisorId) && (
+            <label className="completo">Emisor (quién firma)
+              <select value={emisorId} onChange={(e) => setEmisorId(e.target.value)}>
+                <option value="">— Sin emisor —</option>
+                {opcionesEmisor.map((x) => <option key={x.id} value={x.id}>{x.nombre}{x.ruc ? ` · ${x.ruc}` : ""}</option>)}
+              </select>
+            </label>
           )}
           {SECCIONES_CABECERA.map((sec) => (
             <details key={sec.id} className="seccion" open={sec.abierta}>
@@ -237,10 +270,35 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <div className="botones">
             {!editando && foto && <button type="button" className="btn" onClick={limpiar}>Descartar lectura</button>}
+            {!editando && <button type="button" className="btn" disabled={enviando} onClick={() => enviar("borrador")}>Guardar borrador</button>}
+            {!editando && <button type="button" className="btn" disabled={enviando} onClick={() => enviar("cotizacion")}>Guardar como cotización</button>}
+            {editando && estado === "borrador" && <button type="button" className="btn" disabled={enviando || version == null} onClick={() => enviar("cotizacion")}>Guardar y pasar a cotización</button>}
+            {editando && ["borrador", "cotizacion"].includes(estado) && <button type="button" className="btn" disabled={enviando || version == null} onClick={() => enviar("orden_salida")}>Guardar y mandar al almacén</button>}
             <button type="submit" className="btn btn--primario" disabled={enviando || (editando && version == null)}>
               {editando ? (enviando ? "Guardando…" : "Guardar cambios") : enviando ? "Creando…" : "Crear y mandar al almacén"}
             </button>
           </div>
+          {editando && cierres.length > 0 && (
+            <details className="seccion">
+              <summary>Cerrar sin vender</summary>
+              <div className="form-cab">
+                <label>Cómo
+                  <select value={cierre.a} onChange={(e) => setCierre({ a: e.target.value, codigo: "", detalle: "" })}>
+                    <option value="">—</option>
+                    {cierres.map((k) => <option key={k} value={k}>{MOTIVOS[k].titulo}</option>)}
+                  </select>
+                </label>
+                <label>Motivo
+                  <select value={cierre.codigo} disabled={!cierre.a} onChange={(e) => setCierre({ ...cierre, codigo: e.target.value })}>
+                    <option value="">—</option>
+                    {(MOTIVOS[cierre.a]?.motivos ?? []).map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                  </select>
+                </label>
+                <label className="completo">Detalle (opcional)<input value={cierre.detalle} maxLength={200} onChange={(e) => setCierre({ ...cierre, detalle: e.target.value })} /></label>
+              </div>
+              <button type="button" className="btn" disabled={enviando || version == null} onClick={cerrarSinVender}>Cerrar sin vender</button>
+            </details>
+          )}
         </form>
       </div>
     </section>

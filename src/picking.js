@@ -8,9 +8,9 @@
 export const ESTADOS_LINEA = Object.freeze(["pendiente", "buscando", "encontrado", "no_encontrado"]);
 export const RECONOCIMIENTOS = Object.freeze(["muestra", "foto"]); // cómo se identificó el repuesto
 
-// PROVISIONAL: puntaje por piso donde se encontró el ítem. Héctor aún no define la tabla real; el servicio
-// acepta otra por parámetro (createRouter({ core, puntajesPiso })). Se guarda en cada marca el puntaje vigente
-// en ese momento, así cambiar la tabla no reescribe lo ya medido.
+// Puntaje por defecto por piso, para una empresa que aún no configuró nada. La tabla real es CONFIGURABLE por empresa
+// (config.js, pantalla «Configuración»). Se guarda en cada marca el puntaje vigente en ese momento, así cambiar la
+// tabla no reescribe lo ya medido.
 export const PUNTAJES_PISO = Object.freeze({ 1: 1, 2: 2, 3: 3, 4: 4 });
 
 export class ErrorPicking extends Error {
@@ -37,7 +37,7 @@ const esEntero = (n) => Number.isInteger(n);
  * Aplica un cambio parcial sobre la fila actual (o una vacía) y valida el resultado completo.
  * Devuelve la fila nueva; el puntaje se recalcula siempre desde el piso.
  */
-export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, ahora = new Date() } = {}) {
+export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, extras = {}, ahora = new Date() } = {}) {
   const base = {
     estado: "pendiente",
     piso: null,
@@ -97,7 +97,10 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
     fila.cantidadEncontrada = null;
   }
 
-  fila.puntaje = fila.estado === "encontrado" ? (puntajesPiso[fila.piso] ?? 0) : 0;
+  // Piso + extras configurables (taller, reconocido por muestra o por foto); por defecto los extras valen 0
+  fila.puntaje = fila.estado === "encontrado"
+    ? Math.round(((puntajesPiso[fila.piso] ?? 0) + (fila.taller ? extras.taller ?? 0 : 0) + (fila.reconocido ? extras[fila.reconocido] ?? 0 : 0)) * 100) / 100
+    : 0;
 
   if (fila.estado !== "pendiente" && !fila.iniciadoTs) fila.iniciadoTs = ahora;
   if (fila.estado === "pendiente") fila.iniciadoTs = null;

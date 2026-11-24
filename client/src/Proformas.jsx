@@ -4,8 +4,10 @@ import { ESTADOS_PROFORMA, coincideBusqueda, haceCuanto } from "./logica.js";
 import { useSondeo } from "./useSondeo.js";
 
 const FILTROS = [
+  ["borradores", "Borradores y cotizaciones", ["borrador", "cotizacion"]],
   ["activas", "En proceso", ["orden_salida", "orden_revision"]],
   ["cerradas", "Cerradas", ["cerrada"]],
+  ["sinventa", "Sin vender", ["descartado", "rechazada", "vencida"]],
 ];
 
 // Estación de creación: las proformas ya generadas, para abrir una y corregirla mientras está en el almacén.
@@ -37,7 +39,7 @@ export default function Proformas({ alEditar }) {
               <li key={p.code} className="tarjeta">
                 <div className="tarjeta__cab">
                   <span className="codigo">{p.code}</span>
-                  <span className="cliente">{p.cabecera?.cliente || "Sin cliente"}</span>
+                  <span className="cliente">{p.cabecera?.cliente || "Sin cliente"}{p.emisor?.nombre ? ` · ${p.emisor.nombre}` : ""}</span>
                   <span className="meta">
                     <span className={"chip chip--est-" + p.estado}>{ESTADOS_PROFORMA[p.estado] ?? p.estado}</span>{" "}
                     {p.lineas.length} líneas · {p.avance.resueltas}/{p.avance.total} resueltas · {haceCuanto(p.actualizadaTs ?? p.creadaTs, ahora)}

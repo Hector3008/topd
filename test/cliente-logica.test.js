@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -158,5 +158,24 @@ describe("front de topd: carga desde archivo", () => {
     const r = prepararProforma({ lineas: [{ cantidad: "1", descripcion: "Relay" }] });
     assert.equal("modelo" in r.lineas[0], false);
     assert.equal(detalleLinea({ descripcion: "x" }), "");
+  });
+});
+
+describe("borrador, configuración y cierres (corte G)", () => {
+  it("un borrador puede ir sin líneas; lo demás no", () => {
+    assert.match(prepararProforma({ lineas: [{ cantidad: "", descripcion: "" }] }).error, /al menos una/);
+    const r = prepararProforma({ cabecera: { cliente: "Pedalco" }, lineas: [{ cantidad: "", descripcion: "" }] }, { permitirVacio: true });
+    assert.deepEqual(r, { cabecera: { cliente: "Pedalco" }, lineas: [], pagos: [] });
+  });
+  it("permiso de configuración y envío de la tabla", () => {
+    assert.equal(puedeConfigurar(["estacion:configuracion"]), true);
+    assert.equal(puedeConfigurar(["estacion:creacion"]), false);
+    const c = configParaEnviar({ pisos: [{ piso: "2", puntaje: "3" }], extras: { taller: "1", muestra: 0, foto: 0 }, emisores: [{ nombre: "  " }, { nombre: "Norte" }, { id: "E1", nombre: "" }] });
+    assert.deepEqual(c.pisos, [{ piso: 2, puntaje: "3" }]);
+    assert.deepEqual(c.emisores.map((e) => e.nombre), ["Norte", ""]); // el vacío sin id se descarta; el que ya existe se conserva (el servidor lo rechaza si queda sin nombre)
+  });
+  it("cada estado ofrece sus cierres y todos tienen motivos", () => {
+    assert.deepEqual(CIERRES_POR_ESTADO.cotizacion, ["rechazada", "vencida"]);
+    for (const k of Object.values(CIERRES_POR_ESTADO).flat()) assert.ok(MOTIVOS[k].motivos.length > 0);
   });
 });

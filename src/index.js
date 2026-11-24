@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
+import { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 import { CAMPOS_REPUESTO } from "./catalogo.js";
 import { pickingSchema } from "./picking-modelo.js";
+import { configSchema } from "./config-modelo.js";
 import { crearServicioPicking, responderError } from "./picking-servicio.js";
 import { PUNTAJES_PISO } from "./picking.js";
 import { crearLector, ErrorOcr } from "./ocr.js";
@@ -16,6 +17,7 @@ export { CAMPOS_REPUESTO } from "./catalogo.js";
 export { ENTREGAS, CANALES_VENTA, COMPROBANTES, FORMAS_PAGO } from "./picking-servicio.js";
 export { crearLector, normalizarLectura, ErrorOcr, MODOS_OCR } from "./ocr.js";
 export { leerArchivo, ErrorArchivo } from "./archivo.js";
+export { configPorDefecto, limpiarConfig, puntajesDe } from "./config.js";
 export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./picking.js";
 
 /**
@@ -76,12 +78,13 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   router.use(express.json());
   // Picking (pieza piloto). Las rutas completas de proformas llegan en 5.72 y el front de cuatro estaciones en 5.73.
   const Picking = core.model("Picking", pickingSchema, "picking");
-  const picking = crearServicioPicking({ core, Picking, puntajesPiso });
+  const Config = core.model("Config", configSchema, "config");
+  const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso });
   const deProduccion = [autenticar(), requierePermiso(ESTACIONES.produccion), eventos.middleware({ estacion: "produccion" })];
   const quien = (req) => ({ usuarioId: req.auth.usuarioId, permisos: req.rol.permisos });
 
   router.get("/picking", ...deProduccion, async (_req, res, next) => {
-    try { res.json({ puntajesPiso, proformas: await picking.activas() }); } catch (e) { responderError(e, res, next); }
+    try { res.json({ ...(await picking.puntajes()), proformas: await picking.activas() }); } catch (e) { responderError(e, res, next); }
   });
   router.put("/picking/:code/lineas/:lineaId", ...deProduccion, async (req, res, next) => {
     try {
@@ -95,7 +98,7 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   // Revisión (despacho): valida el pedido que armó el almacén y lo cierra.
   const deRevision = [autenticar(), requierePermiso(ESTACIONES.revision), eventos.middleware({ estacion: "revision" })];
   router.get("/revision", ...deRevision, async (_req, res, next) => {
-    try { res.json({ puntajesPiso, proformas: await picking.listar({ estados: ["orden_revision"] }) }); } catch (e) { responderError(e, res, next); }
+    try { res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: ["orden_revision"] }) }); } catch (e) { responderError(e, res, next); }
   });
   router.post("/revision/:code/cerrar", ...deRevision, async (req, res, next) => {
     try { res.json(await picking.cerrar({ code: req.params.code, ...quien(req) })); } catch (e) { responderError(e, res, next); }
@@ -105,13 +108,16 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   router.get("/bandeja", ...deBandeja, async (req, res, next) => {
     try {
       const estados = typeof req.query.estado === "string" && req.query.estado ? req.query.estado.split(",").slice(0, 8) : Object.keys(TIPO_PROFORMA.permisos).concat("borrador", "orden_salida", "orden_revision");
-      res.json({ puntajesPiso, proformas: await picking.listar({ estados: [...new Set(estados)], limite: 100, recientes: true, conPagos: true }) });
+      res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: [...new Set(estados)], limite: 100, recientes: true, conPagos: true }) });
     } catch (e) { responderError(e, res, next); }
   });
   router.post("/proformas", ...deCreacion, async (req, res, next) => {
     try {
-      const code = await picking.crearOrden({ cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos, origen: req.body?.origen, ...quien(req) });
-      res.status(201).json({ code, estado: "orden_salida" });
+      const r = await picking.crearOrden({
+        cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos, origen: req.body?.origen,
+        emisorId: req.body?.emisorId, destino: req.body?.destino, ...quien(req),
+      });
+      res.status(201).json(r);
     } catch (e) { responderError(e, res, next); }
   });
   // Estación de creación: ver las proformas, abrir una y corregirla (nueva versión; el avance del almacén solo se reinicia
@@ -135,10 +141,34 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   router.put("/proformas/:code", ...deCreacion, async (req, res, next) => {
     try {
       res.json(await picking.editar({
-        code: req.params.code, cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos,
+        code: req.params.code, cabecera: req.body?.cabecera, lineas: req.body?.lineas, pagos: req.body?.pagos, emisorId: req.body?.emisorId,
         esperaVersion: req.body?.version, usuarioId: req.auth.usuarioId,
       }));
     } catch (e) { responderError(e, res, next); }
+  });
+  // Mandar a cotización o al almacén, o cerrar sin vender con motivo: { a, motivo: { codigo, detalle }, version }
+  router.post("/proformas/:code/estado", ...deCreacion, async (req, res, next) => {
+    try {
+      res.json(await picking.cambiarEstado({ code: req.params.code, a: req.body?.a, motivo: req.body?.motivo, esperaVersion: req.body?.version, ...quien(req) }));
+    } catch (e) { responderError(e, res, next); }
+  });
+  // Emisores activos y motivos, para el formulario de creación (la configuración completa es de otra estación)
+  router.get("/opciones", ...deCreacion, async (_req, res, next) => {
+    try {
+      const c = await picking.config();
+      res.json({
+        emisores: c.emisores.filter((e) => e.activo).map(({ id, nombre, ruc }) => ({ id, nombre, ruc })),
+        motivos: { descartado: MOTIVOS_DESCARTE, rechazada: MOTIVOS_RECHAZO, vencida: MOTIVOS_VENCIMIENTO },
+      });
+    } catch (e) { responderError(e, res, next); }
+  });
+  // Configuración de la empresa: pisos, puntajes y emisores
+  const deConfiguracion = [autenticar(), requierePermiso(ESTACIONES.configuracion), eventos.middleware({ estacion: "configuracion" })];
+  router.get("/config", ...deConfiguracion, async (_req, res, next) => {
+    try { res.json(await picking.config()); } catch (e) { responderError(e, res, next); }
+  });
+  router.put("/config", ...deConfiguracion, async (req, res, next) => {
+    try { res.json(await picking.guardarConfig({ entrada: req.body, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
   });
   router.get("/estado", (_req, res) => {
     res.json({ servicio: "topd", tipo: TIPO_PROFORMA.tipo, estaciones: Object.values(ESTACIONES) });

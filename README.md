@@ -20,6 +20,7 @@ Un solo tipo, `proforma`, prefijo `DP` (`DP-0000001`):
 | producción | `estacion:produccion` | junta el pedido y lo envía a revisión |
 | revisión | `estacion:revision` | valida y cierra |
 | bandeja | `estacion:bandeja` | solo lee |
+| configuración | `estacion:configuracion` | pisos, puntajes y emisores de la empresa |
 
 Roles de plantilla (en `core`): `vendedor`, `almacen`, `revisor`.
 
@@ -113,3 +114,12 @@ documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que s
 - Hojas **Ejemplo** e **Instrucciones**: de apoyo; la carga las ignora.
 - Al cargar un Excel se reconocen estas etiquetas de cabecera (en una celda «Etiqueta: valor» o una celda de etiqueta seguida de su valor): cliente, RUC/DNI, teléfono, e-mail, dirección, provincia, ciudad, entrega, destino, agencia, atención, canal de venta, forma de pago, comprobante, fecha, vendedor, despachador y N.º de la proforma de papel. Un valor que no está en la lista cerrada no se carga y se avisa (`CABECERA_VALOR`).
 - Una columna `COMENTARIO` (o `OBSERVACION`) pasa al comentario de la línea para el almacén.
+
+
+## Configuración, emisor, borrador y cotización (corte G)
+
+- `GET/PUT /config` (`estacion:configuracion`): pisos con su puntaje, puntos extra (`taller`, `muestra`, `foto`; por defecto 0) y emisores. Un documento por empresa (colección `config`); sin nada guardado rige 1→1 … 4→4. Cada marca del almacén guarda el puntaje de ese momento: cambiar la tabla no reescribe lo ya medido. `/picking`, `/revision` y `/bandeja` devuelven `puntajesPiso` y `extras` vigentes.
+- Emisores: nunca se borran, se desactivan. La proforma guarda una **copia** (`doc.emisor`) al emitirse; `POST /proformas` y `PUT /proformas/:code` aceptan `emisorId` (`""` lo quita; sin definir lo conserva). `GET /opciones` (`estacion:creacion`) lista los emisores activos.
+- `POST /proformas` acepta `destino`: `borrador` (puede ir sin líneas), `cotizacion` u `orden_salida` (por defecto). Responde `{ code, estado }`.
+- `POST /proformas/:code/estado` `{ a, version, motivo: { codigo, detalle? } }` (`estacion:creacion`): manda a `cotizacion` u `orden_salida` (exige líneas) o cierra sin vender (`descartado`, `rechazada`, `vencida`, con motivo). Solo desde borrador, cotización u orden de salida.
+- Roles: hay que dar `estacion:configuracion` a quien administre pisos y emisores.

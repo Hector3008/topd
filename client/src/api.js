@@ -87,10 +87,16 @@ export const api = {
     listar: (estados) => pedir("GET", `topd/proformas${estados?.length ? `?estado=${estados.join(",")}` : ""}`),
     obtener: (code) => pedir("GET", `topd/proformas/${enc(code)}`),
     editar: (code, cuerpo) => pedir("PUT", `topd/proformas/${enc(code)}`, cuerpo),
+    cambiarEstado: (code, cuerpo) => pedir("POST", `topd/proformas/${enc(code)}/estado`, cuerpo),
+    opciones: () => pedir("GET", "topd/opciones"),
     // OCR: lee la foto y devuelve el JSON para revisar; NO crea la proforma
     leer: (cuerpo) => pedir("POST", "topd/proformas/leer", cuerpo),
   },
   ocr: () => pedir("GET", "topd/ocr"),
+  config: {
+    leer: () => pedir("GET", "topd/config"),
+    guardar: (cuerpo) => pedir("PUT", "topd/config", cuerpo),
+  },
 };
 
 export function mensajeDeError(e) {
@@ -105,6 +111,7 @@ export function mensajeDeError(e) {
   if (e.codigo === "PICKING_INCOMPLETO") return "Quedan líneas sin resolver.";
   if (e.codigo === "CONFLICTO_VERSION") return "Otra persona cambió esta proforma mientras la editabas. Ábrela de nuevo para ver lo último.";
   if (e.codigo === "ESTADO_NO_EDITABLE") return "Esta proforma ya salió del almacén y no se puede editar.";
+  if (e.codigo === "CONFIG_INVALIDA" || e.codigo === "EMISOR_INVALIDO" || e.codigo === "DESTINO_INVALIDO") return e.message;
   if (e.codigo === "LINEA_INVALIDA" || e.codigo === "LINEAS_REQUERIDAS") return e.message;
   if (e.status === 429) return "Demasiados intentos. Espera unos minutos.";
   if (e.status >= 500) return "El servidor tuvo un problema. Intenta de nuevo en un momento.";
