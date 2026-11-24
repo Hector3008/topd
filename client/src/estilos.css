@@ -112,3 +112,13 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .form-lineas .detalle { grid-column: 1 / -1; margin: 0; }
 /* En el teléfono la descripción ocupa toda la fila (los nombres de los archivos son largos) */
 @media (max-width: 599px) { .form-lineas li { grid-template-columns: 5rem 1fr; } .form-lineas .desc-in { grid-column: 1 / -1; order: -1; } }
+
+/* Reportes del almacén */
+.resumen-rep { list-style: none; padding: 0; margin: 0 0 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.resumen-rep li { border: 1px solid var(--borde, #d8d8d8); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; }
+.resumen-rep b { font-size: 1.5rem; line-height: 1.1; }
+.resumen-rep span { font-size: .85rem; color: var(--suave, #666); }
+.tabla-rep { overflow-x: auto; margin-bottom: 16px; }
+.tabla-rep table { border-collapse: collapse; width: 100%; }
+.tabla-rep th, .tabla-rep td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--borde, #d8d8d8); white-space: nowrap; }
+.tabla-rep th { font-size: .8rem; color: var(--suave, #666); font-weight: 600; }

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, duracion, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -177,5 +177,16 @@ describe("borrador, configuración y cierres (corte G)", () => {
   it("cada estado ofrece sus cierres y todos tienen motivos", () => {
     assert.deepEqual(CIERRES_POR_ESTADO.cotizacion, ["rechazada", "vencida"]);
     for (const k of Object.values(CIERRES_POR_ESTADO).flat()) assert.ok(MOTIVOS[k].motivos.length > 0);
+  });
+});
+
+describe("duración para el reporte", () => {
+  it("formatea segundos, minutos y horas; sin dato queda en raya", () => {
+    assert.equal(duracion(45000), "45 s");
+    assert.equal(duracion(200000), "3 min 20 s");
+    assert.equal(duracion(120000), "2 min");
+    assert.equal(duracion(3900000), "1 h 05 min");
+    assert.equal(duracion(null), "—");
+    assert.equal(duracion(-5), "—");
   });
 });

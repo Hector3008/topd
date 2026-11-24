@@ -58,6 +58,16 @@ export function haceCuanto(ts, ahora = Date.now()) {
   return h < 24 ? `hace ${h} h` : `hace ${Math.floor(h / 24)} d`;
 }
 
+/** Duración corta para tiempos del almacén: 45 s · 3 min 20 s · 1 h 05 min. Sin dato: «—». */
+export function duracion(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m} min ${s % 60} s` : `${m} min`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`;
+}
+
 export const dinero = (n) => (n == null || Number.isNaN(Number(n)) ? "" : Number(n).toFixed(2));
 
 /** Cambio parcial que se envía al servidor al tocar un botón de estado. */

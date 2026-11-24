@@ -123,3 +123,7 @@ documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que s
 - `POST /proformas` acepta `destino`: `borrador` (puede ir sin líneas), `cotizacion` u `orden_salida` (por defecto). Responde `{ code, estado }`.
 - `POST /proformas/:code/estado` `{ a, version, motivo: { codigo, detalle? } }` (`estacion:creacion`): manda a `cotizacion` u `orden_salida` (exige líneas) o cierra sin vender (`descartado`, `rechazada`, `vencida`, con motivo). Solo desde borrador, cotización u orden de salida.
 - Roles: hay que dar `estacion:configuracion` a quien administre pisos y emisores.
+
+## Reportes del almacén (corte H)
+
+`GET /reportes/picking?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (`estacion:bandeja`; sin fechas, los últimos 7 días; máximo 92). Cuenta las líneas **resueltas** (halladas o no) en el rango, en la hora de la empresa (`America/Lima`), y devuelve `totales` (líneas, encontradas, no encontradas, puntaje, mediana de tiempo, taller, muestra, foto, proformas), `porPersona`, `porPiso` y `porDia`. El tiempo es de la primera marca a la resolución y se resume con la **mediana** para que una línea olvidada toda la noche no lo distorsione. Pestaña «Reportes» en el front.

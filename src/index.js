@@ -111,6 +111,10 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: [...new Set(estados)], limite: 100, recientes: true, conPagos: true }) });
     } catch (e) { responderError(e, res, next); }
   });
+  // Puntajes y tiempos del almacén (?desde=AAAA-MM-DD&hasta=AAAA-MM-DD)
+  router.get("/reportes/picking", ...deBandeja, async (req, res, next) => {
+    try { res.json(await picking.reportePicking({ desde: req.query.desde, hasta: req.query.hasta })); } catch (e) { responderError(e, res, next); }
+  });
   router.post("/proformas", ...deCreacion, async (req, res, next) => {
     try {
       const r = await picking.crearOrden({

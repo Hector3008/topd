@@ -93,6 +93,9 @@ export const api = {
     leer: (cuerpo) => pedir("POST", "topd/proformas/leer", cuerpo),
   },
   ocr: () => pedir("GET", "topd/ocr"),
+  reportes: {
+    picking: (desde, hasta) => pedir("GET", `topd/reportes/picking?${new URLSearchParams({ ...(desde && { desde }), ...(hasta && { hasta }) })}`),
+  },
   config: {
     leer: () => pedir("GET", "topd/config"),
     guardar: (cuerpo) => pedir("PUT", "topd/config", cuerpo),
@@ -111,6 +114,7 @@ export function mensajeDeError(e) {
   if (e.codigo === "PICKING_INCOMPLETO") return "Quedan líneas sin resolver.";
   if (e.codigo === "CONFLICTO_VERSION") return "Otra persona cambió esta proforma mientras la editabas. Ábrela de nuevo para ver lo último.";
   if (e.codigo === "ESTADO_NO_EDITABLE") return "Esta proforma ya salió del almacén y no se puede editar.";
+  if (e.codigo === "RANGO_INVALIDO") return e.message;
   if (e.codigo === "CONFIG_INVALIDA" || e.codigo === "EMISOR_INVALIDO" || e.codigo === "DESTINO_INVALIDO") return e.message;
   if (e.codigo === "LINEA_INVALIDA" || e.codigo === "LINEAS_REQUERIDAS") return e.message;
   if (e.status === 429) return "Demasiados intentos. Espera unos minutos.";

@@ -1,5 +1,6 @@
 import { ErrorDocumento } from "core";
 import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
+import { armarReporte, rangoDeDias } from "./reportes.js";
 import { configPorDefecto, limpiarConfig, puntajesDe, copiaDeEmisor } from "./config.js";
 import {
   ErrorPicking, PUNTAJES_PISO, lineasDelDocumento, aplicarMarca, combinarAvance, resumenAvance,
@@ -59,6 +60,24 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       await Config.findOneAndUpdate({ clave: "topd" }, { $set: { datos: nueva, porId: usuarioId } }, { upsert: true, returnDocument: "after", lean: true });
       await registrarEvento("config.guardada", { code: undefined, usuarioId, estacion: "configuracion", datos: { pisos: nueva.pisos.length, emisores: nueva.emisores.length, extras: nueva.extras } });
       return nueva;
+    },
+
+    /**
+     * Puntajes y tiempos del almacén entre dos días (`AAAA-MM-DD`, ambos incluidos, en la hora de la empresa; sin datos,
+     * los últimos 7 días). Cuenta las líneas resueltas en el rango.
+     */
+    async reportePicking({ desde, hasta, zona } = {}) {
+      const r = rangoDeDias({ desde, hasta }, { zona });
+      const filas = await Picking.find({ estado: { $in: ["encontrado", "no_encontrado"] }, resueltoTs: { $gte: r.ini, $lt: r.fin } }).lean();
+      const ids = [...new Set(filas.map((f) => (f.porId ? String(f.porId) : "")).filter(Boolean))];
+      let nombres = {};
+      if (ids.length && modelos.Usuario) {
+        try {
+          const us = await modelos.Usuario.find({ _id: { $in: ids } }).select("nombre correo").lean();
+          nombres = Object.fromEntries(us.map((u) => [String(u._id), u.nombre || u.correo]));
+        } catch (e) { console.error("topd: no se pudieron leer los nombres del reporte", e); }
+      }
+      return { desde: r.desde, hasta: r.hasta, ...armarReporte(filas, nombres, { zona }) };
     },
 
     /** Proformas en uno o más estados, con el avance de cada línea (la más antigua primero, salvo `recientes`). */

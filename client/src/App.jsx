@@ -7,6 +7,7 @@ import Revision from "./Revision.jsx";
 import Bandeja from "./Bandeja.jsx";
 import Proformas from "./Proformas.jsx";
 import Config from "./Config.jsx";
+import Reportes from "./Reportes.jsx";
 
 // Sin enrutador (como tobt y cuenta): la vista sale del estado. Sin sesión, sin empresa o con contraseña temporal
 // se manda a `cuenta`, que lo resuelve.
@@ -15,7 +16,7 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [problema, setProblema] = useState(null); // { texto, irACuenta }
   const [editando, setEditando] = useState(null); // código de la proforma que se está corrigiendo
-  const [vista, setVista] = useState(["nueva", "proformas", "almacen", "revision", "bandeja", "config"].find((v) => location.hash === `#${v}`) ?? null);
+  const [vista, setVista] = useState(["nueva", "proformas", "almacen", "revision", "bandeja", "reportes", "config"].find((v) => location.hash === `#${v}`) ?? null);
 
   const cargarYo = useCallback(async () => {
     try {
@@ -54,6 +55,7 @@ export default function App() {
     ["almacen", "Almacén", puedeAlmacen(yo.permisos)],
     ["revision", "Revisión", puedeRevisar(yo.permisos)],
     ["bandeja", "Bandeja", puedeBandeja(yo.permisos)],
+    ["reportes", "Reportes", puedeBandeja(yo.permisos)],
     ["config", "Configuración", puedeConfigurar(yo.permisos)],
   ].filter(([, , ok]) => ok);
   if (!estaciones.length)
@@ -67,7 +69,7 @@ export default function App() {
     );
 
   // La vista elegida si tiene permiso; si no, la primera estación del rol (almacén antes que crear, para quien hace las dos)
-  const orden = ["almacen", "revision", "bandeja", "nueva", "proformas", "config"];
+  const orden = ["almacen", "revision", "bandeja", "nueva", "proformas", "reportes", "config"];
   const actual = estaciones.some(([k]) => k === vista) ? vista : orden.find((k) => estaciones.some(([e]) => e === k));
   return (
     <main className="app">
@@ -83,6 +85,7 @@ export default function App() {
       {actual === "almacen" && <Almacen />}
       {actual === "revision" && <Revision />}
       {actual === "bandeja" && <Bandeja />}
+      {actual === "reportes" && <Reportes />}
       {actual === "config" && <Config />}
       {actual === "proformas" && (editando
         ? <NuevaProforma key={editando} codigo={editando} alTerminar={() => setEditando(null)} />

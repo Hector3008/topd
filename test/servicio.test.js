@@ -20,7 +20,10 @@ function entorno() {
       },
       async transicionar({ code, a, motivo, esperaVersion }) { const d = docs.get(code); if (esperaVersion !== undefined && esperaVersion !== d.version) throw new Error("conflicto"); d.estado = a; if (motivo) d.motivo = motivo; return d; },
     },
-    modelos: { Evento: { async create(e) { eventos.push(e); } } },
+    modelos: {
+      Evento: { async create(e) { eventos.push(e); } },
+      Usuario: { find: () => ({ select: () => ({ lean: async () => [{ _id: "u2", nombre: "Rosa" }] }) }) },
+    },
   };
   let config = null;
   const Config = {
@@ -28,7 +31,11 @@ function entorno() {
     async findOneAndUpdate(_f, { $set }) { config = { clave: "topd", ...$set }; return config; },
   };
   const Picking = {
-    find: (f) => ({ lean: async () => filas.filter((x) => (f.code.$in ? f.code.$in.includes(x.code) : x.code === f.code)) }),
+    find: (f) => ({
+      lean: async () => filas.filter((x) => (f.resueltoTs
+        ? f.estado.$in.includes(x.estado) && x.resueltoTs >= f.resueltoTs.$gte && x.resueltoTs < f.resueltoTs.$lt
+        : f.code.$in ? f.code.$in.includes(x.code) : x.code === f.code)),
+    }),
     findOne: (f) => ({ lean: async () => filas.find((x) => x.code === f.code && x.lineaId === f.lineaId) ?? null }),
     async deleteMany(f) {
       const ids = f.lineaId.$in;
@@ -323,5 +330,26 @@ describe("configuración, emisor, borrador y cotización", () => {
     assert.equal(r.estado, "rechazada");
     assert.deepEqual(e.docs.get(code).motivo, { codigo: "precio", detalle: "muy caro" });
     await falla(e.svc.cambiarEstado({ code, a: "orden_salida", permisos: [] }), "ESTADO_NO_EDITABLE");
+  });
+});
+
+describe("reporte de picking", () => {
+  it("suma puntajes y tiempos de lo resuelto en el rango, con el nombre de la persona", async () => {
+    const e = entorno();
+    const code = await e.svc.crearOrden({ lineas: [{ cantidad: 1, descripcion: "A" }, { cantidad: 1, descripcion: "B" }, { cantidad: 1, descripcion: "C" }] });
+    await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 3 }, usuarioId: "u2" });
+    await e.svc.marcar({ code, lineaId: "L2", cambio: { estado: "no_encontrado" }, usuarioId: "u2" });
+    await e.svc.marcar({ code, lineaId: "L3", cambio: { estado: "buscando" }, usuarioId: "u2" }); // sin resolver: no cuenta
+    const hoy = new Date().toISOString().slice(0, 10);
+    const r = await e.svc.reportePicking({ desde: hoy, hasta: hoy, zona: "UTC" });
+    assert.equal(r.totales.lineas, 2);
+    assert.equal(r.totales.puntaje, 3);
+    assert.deepEqual(r.porPersona.map((x) => [x.nombre, x.lineas, x.puntaje]), [["Rosa", 2, 3]]);
+    assert.deepEqual(r.porPiso, [{ piso: 3, lineas: 1, puntaje: 3 }]);
+    const ayer = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+    assert.equal((await e.svc.reportePicking({ desde: ayer, hasta: ayer, zona: "UTC" })).totales.lineas, 0);
+    await falla(e.svc.reportePicking({ desde: "2026-13-40" }), "RANGO_INVALIDO");
+    await falla(e.svc.reportePicking({ desde: "2026-11-10", hasta: "2026-11-01" }), "RANGO_INVALIDO");
+    await falla(e.svc.reportePicking({ desde: "2026-01-01", hasta: "2026-11-01" }), "RANGO_INVALIDO");
   });
 });
