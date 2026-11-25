@@ -103,6 +103,8 @@ describe("picking: servicio montado", () => {
     assert.ok(rutas.includes("post /picking/:code/listo"));
     assert.ok(rutas.includes("post /proformas"));
     assert.ok(rutas.includes("get /estado"));
+    assert.ok(rutas.includes("get /stock/estado"));
+    assert.ok(rutas.includes("post /stock/sincronizar"));
   });
 });
 

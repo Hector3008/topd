@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError, urlPlantilla } from "./api.js";
+import VistaPrevia from "./VistaPrevia.jsx";
 import { CIERRES_POR_ESTADO, MOTIVOS, SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
 
 const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
@@ -46,6 +47,8 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
   const [emisorId, setEmisorId] = useState("");
   const [emisorInicial, setEmisorInicial] = useState(""); // el que traía la proforma: solo se envía si cambia
   const [emisorGuardado, setEmisorGuardado] = useState(null);
+  // En pantallas anchas la vista previa va abierta a un lado; en el celular, plegada bajo el formulario
+  const [abiertaVista, setAbiertaVista] = useState(() => typeof window !== "undefined" && window.matchMedia?.("(min-width: 1100px)").matches === true);
   const [cierre, setCierre] = useState({ a: "", codigo: "", detalle: "" });
 
   useEffect(() => {
@@ -154,6 +157,7 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
   const cierres = CIERRES_POR_ESTADO[estado] ?? [];
   // El emisor actual de la proforma aparece aunque se haya desactivado después
   const opcionesEmisor = emisorGuardado && !emisores.some((x) => x.id === emisorGuardado.id) ? [...emisores, emisorGuardado] : emisores;
+  const emisorElegido = emisorId ? opcionesEmisor.find((x) => x.id === emisorId) ?? null : null;
   const textoCreada = { borrador: "guardada como borrador", cotizacion: "guardada como cotización", orden_salida: "creada: ya está en el almacén" };
 
   return (
@@ -192,6 +196,8 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
         </label>
       </div>}
 
+      <div className="con-vista">
+      <div>
       <div className={foto ? "revision" : ""}>
         {foto && (
           <figure className="revision__foto">
@@ -300,6 +306,14 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
             </details>
           )}
         </form>
+      </div>
+      </div>
+      <aside className="vista-col">
+        <details className="vista-det" open={abiertaVista} onToggle={(e) => setAbiertaVista(e.currentTarget.open)}>
+          <summary>Vista previa del documento</summary>
+          <VistaPrevia cabecera={cabecera} lineas={lineas} pagos={pagos} emisor={emisorElegido} codigo={editando ? codigo : null} version={editando ? version : null} estado={editando ? estado : null} />
+        </details>
+      </aside>
       </div>
     </section>
   );

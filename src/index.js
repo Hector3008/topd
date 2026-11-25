@@ -6,6 +6,9 @@ import { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_V
 import { CAMPOS_REPUESTO } from "./catalogo.js";
 import { pickingSchema } from "./picking-modelo.js";
 import { configSchema } from "./config-modelo.js";
+import { crearServicioGuia } from "./guia-servicio.js";
+import { crearServicioStock, stockDeEntorno } from "./stock-servicio.js";
+import { crearLectorHoja } from "./hoja.js";
 import { crearServicioPicking, responderError } from "./picking-servicio.js";
 import { PUNTAJES_PISO } from "./picking.js";
 import { crearLector, ErrorOcr } from "./ocr.js";
@@ -31,7 +34,7 @@ export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./p
  */
 const DIST_POR_DEFECTO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "client", "dist");
 
-export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO, lector = crearLector() } = {}) {
+export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO, lector = crearLector(), stock = stockDeEntorno() } = {}) {
   if (!core?.documentos || !core?.catalogo)
     throw new Error("topd: createRouter necesita el núcleo (core) con documentos y catalogo");
 
@@ -80,9 +83,23 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   const Picking = core.model("Picking", pickingSchema, "picking");
   const Config = core.model("Config", configSchema, "config");
   const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso });
+  const guia = crearServicioGuia({ core });
+  // Sincronización de stock desde la hoja de cálculo (5.74). Sin variables de entorno queda apagada y la API lo dice.
+  const stockServicio = crearServicioStock({
+    core, empresaId: stock?.empresaId,
+    leerHoja: stock ? (stock.leerHoja ?? crearLectorHoja({ email: stock.email, clave: stock.clave, hojaId: stock.hojaId, rango: stock.rango })) : null,
+    alCambiar: (empresaId) => guia.olvidar(empresaId),
+  });
+  if (stock && stock.cadaMin !== 0) stockServicio.iniciar({ cadaMin: stock.cadaMin ?? 2 });
   const deProduccion = [autenticar(), requierePermiso(ESTACIONES.produccion), eventos.middleware({ estacion: "produccion" })];
   const quien = (req) => ({ usuarioId: req.auth.usuarioId, permisos: req.rol.permisos });
 
+  // Guía de almacén: opciones del catálogo para cada línea { lineas: [{ k, descripcion, codMax }] }. La ven creación (vista previa) y almacén.
+  const opcionesDeGuia = async (req, res, next) => {
+    try { res.json(await guia.opciones({ empresaId: req.auth.empresaId, lineas: req.body?.lineas })); } catch (e) { responderError(e, res, next); }
+  };
+  router.post("/guia/opciones", ...deCreacion, opcionesDeGuia);
+  router.post("/picking/opciones", ...deProduccion, opcionesDeGuia);
   router.get("/picking", ...deProduccion, async (_req, res, next) => {
     try { res.json({ ...(await picking.puntajes()), proformas: await picking.activas() }); } catch (e) { responderError(e, res, next); }
   });
@@ -166,7 +183,7 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
     try {
       const c = await picking.config();
       res.json({
-        emisores: c.emisores.filter((e) => e.activo).map(({ id, nombre, ruc }) => ({ id, nombre, ruc })),
+        emisores: c.emisores.filter((e) => e.activo).map(({ activo: _a, ...e }) => e), // completos: la vista previa los dibuja en el encabezado
         motivos: { descartado: MOTIVOS_DESCARTE, rechazada: MOTIVOS_RECHAZO, vencida: MOTIVOS_VENCIMIENTO },
       });
     } catch (e) { responderError(e, res, next); }
@@ -178,6 +195,10 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   });
   router.put("/config", ...deConfiguracion, async (req, res, next) => {
     try { res.json(await picking.guardarConfig({ entrada: req.body, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+  });
+  router.get("/stock/estado", ...deConfiguracion, (_req, res) => res.json(stockServicio.estado()));
+  router.post("/stock/sincronizar", ...deConfiguracion, async (_req, res, next) => {
+    try { res.json(await stockServicio.sincronizar()); } catch (e) { responderError(e, res, next); }
   });
   router.get("/estado", (_req, res) => {
     res.json({ servicio: "topd", tipo: TIPO_PROFORMA.tipo, estaciones: Object.values(ESTACIONES) });

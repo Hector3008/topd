@@ -12,13 +12,17 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--fondo); color: var(--texto); font: 16px/1.4 system-ui, sans-serif; }
-.app { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
+.app { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; min-width: 0; }
 .centrado { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
 .aviso-pantalla { text-align: center; display: grid; gap: 12px; }
 .barra { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 0; }
 .empresa { margin-left: auto; color: var(--suave); font-size: .9rem; }
 .enlace, .enlace-btn { color: var(--primario); text-decoration: none; background: none; border: 0; font: inherit; cursor: pointer; padding: 0; }
 .pestanas { display: flex; gap: 4px; }
+/* La barra de pestañas se desplaza dentro de sí misma: con 8 pestañas ya no ensancha la pantalla en el celular */
+.barra .pestanas { min-width: 0; overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; flex: 1 1 auto; }
+.pestana { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 759px) { .barra .pestanas { flex-basis: 100%; order: 3; } }
 .pestana { border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); padding: 8px 14px; border-radius: 999px; font: inherit; cursor: pointer; min-height: 40px; }
 .pestana.activa { background: var(--primario); color: var(--sobre-primario); border-color: var(--primario); }
 .cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -130,3 +134,42 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .horas { list-style: none; padding: 0; margin: 0 0 16px; }
 .horas li { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: .9rem; }
 .hora-barra { display: block; height: 10px; min-width: 4px; max-width: 40%; background: var(--primario); border-radius: 3px; }
+
+/* Vista previa del documento (nueva proforma y edición) */
+.con-vista { display: block; }
+.vista-det { margin-top: 16px; }
+.vista-det > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.hoja { background: #fff; color: #222; border: 1px solid var(--borde); border-radius: 10px; padding: 14px; font-size: .82rem; line-height: 1.35; }
+.hoja p { margin: 2px 0; }
+.hoja__cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #e5e5e5; margin-bottom: 10px; }
+.hoja__cab--guia { gap: 6px 16px; font-size: .78rem; }
+.hoja__num { text-align: right; }
+.hoja__datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 2px 14px; margin: 0 0 10px; }
+.hoja__datos div { display: flex; gap: 6px; }
+.hoja__datos dt { color: #666; white-space: nowrap; }
+.hoja__datos dd { margin: 0; overflow-wrap: anywhere; }
+.hoja__tabla { overflow-x: auto; }
+.hoja table { border-collapse: collapse; width: 100%; }
+.hoja th, .hoja td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
+.hoja th { font-size: .72rem; color: #666; background: #fafafa; }
+.hoja td small { display: block; color: #777; }
+.hoja__totales { margin: 10px 0 0 auto; max-width: 240px; }
+.hoja__totales p { display: flex; justify-content: space-between; gap: 12px; }
+.hoja__total { font-weight: 700; border-top: 1px solid #222; padding-top: 4px; margin-top: 4px !important; }
+.hoja__pie { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e5e5; color: #555; font-size: .75rem; }
+.hoja__vacio { color: #999; font-style: italic; }
+.hoja__entrega { background: #f6f6f1; padding: 4px 8px; border-radius: 6px; }
+@media (min-width: 1100px) {
+  .app:has(.con-vista) { max-width: 1320px; }
+  .con-vista { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .con-vista > .vista-col { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; }
+  .vista-det { margin-top: 0; }
+}
+.con-vista .revision { grid-template-columns: minmax(0, 1fr); } /* con la vista previa al lado, la foto va sobre el formulario */
+.hoja__guia { min-width: 760px; }
+.hoja__inicio td { border-top: 2px solid #ddd; }
+.opciones-cat { margin: 6px 0; font-size: .9rem; }
+.opciones-cat summary { cursor: pointer; color: var(--primario); }
+.opciones-cat ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.opciones-cat li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
+.opciones-cat small { display: block; color: var(--suave); }

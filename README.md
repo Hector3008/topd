@@ -131,3 +131,28 @@ documento guarda los **pagos** (`{ cuenta, monto, operacion }`, hasta 10), que s
 ## Supervisión del almacén (corte I)
 
 `GET /supervision` (permiso nuevo `estacion:supervision`): cómo va **hoy** el almacén (día de la empresa, `America/Lima`). Devuelve `hoy` (líneas resueltas, no halladas, puntaje, taller, muestra, foto), `cola` (proformas en el almacén, líneas pendientes, en búsqueda, sin tocar, listas para pasar a revisión, proformas que ya salieron hoy), `ritmo` (líneas de la última hora y un **estimado** de lo que tardaría lo pendiente a ese ritmo), `personas` (qué tiene cada una en la mano, cuántas resolvió hoy, puntos y última marca), `enCurso` (cada línea en búsqueda con quién la busca y desde hace cuánto), `proformas` (la que más espera primero, con avance, quiénes la trabajan y el detalle de sus líneas), `porPiso` y `porHora`. La pestaña «Supervisión» se actualiza sola cada 10 s y resalta en ámbar las líneas que llevan más de 20 min en búsqueda. Lógica pura en `src/reportes.js` (`armarSupervisor`).
+
+## Vista previa del documento (corte J)
+
+En «Nueva proforma» y al editar hay una vista previa en vivo (se actualiza al escribir) con dos hojas, como en el siscore: **Proforma** (encabezado con el emisor, datos del cliente, líneas con precio e importe, totales y condiciones) y **Guía de almacén** (cliente, vendedor, entrega, líneas con modelo, cod max, proveedor, familia y comentario; sin precios). En pantallas anchas va a un lado del formulario; en el celular, plegada debajo. No valida ni guarda: solo dibuja lo que hay en el formulario. Las líneas tachadas y vacías no salen. El precio se toma como **IGV incluido**: con factura o boleta se separa el 18 % (`total − total/1.18`); con «proforma» no se separa. `GET /opciones` ahora devuelve los emisores completos (dirección, teléfono, e-mail) para dibujar el encabezado.
+
+## Guía de almacén con opciones del catálogo (corte L)
+
+Como en el siscore: para cada línea se parte la descripción en palabras y se muestran **todos los productos del catálogo** (`core.catalogo`) cuyo texto (código, descripción, proveedor, marca, familia, subfamilia, categoría) contiene todas las palabras, en cualquier orden. Una coincidencia = una opción; cuatro o cinco = cuatro o cinco (hasta 20 por línea, con el total real: «y N más»). Sin coincidencias: «no encontrado». Cada opción muestra código, stock LV y SJL, descripción / familia / subfamilia, equivalentes, ubicación y precio sugerido. Mejoras sobre el siscore: no distingue tildes y, si la línea trae `codMax` (los archivos lo traen), se busca primero por ese código exacto.
+
+- `POST /guia/opciones` (`estacion:creacion`) y `POST /picking/opciones` (`estacion:produccion`): `{ lineas: [{ k, descripcion, codMax }] }` (hasta 100) → `{ catalogo: { total }, lineas: { [k]: { opciones, total, por } } }`.
+- El catálogo se lee entero de `core.catalogo` y se guarda en memoria por empresa **5 minutos** (`src/guia-servicio.js`); una importación o sincronización se ve en la guía a más tardar en ese tiempo. Tope de seguridad: 20 000 productos.
+- Front: hoja «Guía de almacén» de la vista previa (tabla como la del siscore, una fila por opción) y, en el Almacén, «N opciones en el catálogo» desplegable bajo cada línea (abierto si hay 3 o menos).
+- **Depende de que el catálogo de la empresa tenga productos** (la sincronización de stock, pieza 5.74, o una importación con `catalogo.importar`). Con el catálogo vacío la guía avisa «El catálogo de esta empresa está vacío».
+
+## Sincronización de stock desde la hoja de cálculo (5.74)
+
+Reemplaza al cron del siscore (que cada minuto borraba y reinsertaba todo). `src/stock-servicio.js` lee la pestaña `RESULT` de la hoja con la cuenta de servicio de Google, compara con el catálogo (`core.catalogo`) y **solo envía lo que cambió** (cada producto guarda una `HUELLA`). Columnas: `DICTIONARY` (obligatoria; es el código que ve el almacén), `CODE`, `LV`, `SJL`, `TOTAL`, `EQUIVALENTE + STOCK`, `NOMBRE COMERCIAL`, `FAMILIA`, `SUBFAMILIA`, `PROVEEDOR`, `MARCA`, `UBICACION`, `PRECIO SUGERIDO`.
+
+- Productos nuevos o cambiados → `catalogo.importar` en lotes de 500 (una fila que el catálogo rechaza se aparta y se informa; las demás se cargan).
+- Un producto de la hoja que desaparece se **desactiva** (no se borra); si vuelve, se reactiva. Los productos creados a mano (sin `ORIGEN: hoja`) no se tocan.
+- **Freno:** si la hoja viene vacía, o desaparecería más del 30 % (mínimo 20) de los productos, no se desactiva nada y se avisa en Configuración.
+- Variables de entorno en el servidor (sin ellas queda apagada): `STOCK_EMPRESA_ID` (o `TOPD_STOCK_EMPRESA_ID`), `SHEET_ID` (o `TOPD_STOCK_SHEET_ID`), `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`; opcionales `TOPD_STOCK_RANGO` (por defecto `RESULT!A:O`), `TOPD_STOCK_CADA_MIN` (por defecto 2; `0` = solo manual), `TOPD_STOCK_APAGADO=1`.
+- La hoja debe estar compartida (lector) con el correo de la cuenta de servicio. Sin dependencias nuevas: el token se firma con `crypto`.
+- `GET /stock/estado` y `POST /stock/sincronizar` (`estacion:configuracion`); la pestaña Configuración muestra la última corrida y tiene «Sincronizar ahora». La guía de almacén olvida su caché al instante si hubo cambios.
+- Una sola empresa por servidor (la de `STOCK_EMPRESA_ID`), como el visor de `/stock`.

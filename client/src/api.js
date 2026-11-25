@@ -70,6 +70,7 @@ export const urlPlantilla = BASE + "topd/proformas/plantilla.xlsx";
 export const api = {
   yo: async () => normalizarYo(await pedir("GET", "auth/yo")),
   picking: {
+    opciones: (lineas) => pedir("POST", "topd/picking/opciones", { lineas }),
     activas: () => pedir("GET", "topd/picking"),
     marcar: (code, lineaId, cambio) => pedir("PUT", `topd/picking/${enc(code)}/lineas/${enc(lineaId)}`, cambio),
     listo: (code) => pedir("POST", `topd/picking/${enc(code)}/listo`, {}),
@@ -93,6 +94,7 @@ export const api = {
     leer: (cuerpo) => pedir("POST", "topd/proformas/leer", cuerpo),
   },
   ocr: () => pedir("GET", "topd/ocr"),
+  guia: { opciones: (lineas) => pedir("POST", "topd/guia/opciones", { lineas }) },
   supervision: () => pedir("GET", "topd/supervision"),
   reportes: {
     picking: (desde, hasta) => pedir("GET", `topd/reportes/picking?${new URLSearchParams({ ...(desde && { desde }), ...(hasta && { hasta }) })}`),
@@ -100,6 +102,10 @@ export const api = {
   config: {
     leer: () => pedir("GET", "topd/config"),
     guardar: (cuerpo) => pedir("PUT", "topd/config", cuerpo),
+  },
+  stock: {
+    estado: () => pedir("GET", "topd/stock/estado"),
+    sincronizar: () => pedir("POST", "topd/stock/sincronizar"),
   },
 };
 

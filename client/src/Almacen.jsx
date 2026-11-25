@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
 import { useSondeo } from "./useSondeo.js";
+import { useOpciones } from "./useOpciones.js";
 import { ESTADOS, cambioDeEstado, detalleLinea, dinero, haceCuanto, pisosDe, resumenEntrega } from "./logica.js";
 
 
@@ -46,6 +47,8 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
     finally { setEnviando(false); }
   }
 
+  // Opciones del catálogo de cada línea (guía de almacén), solo con la proforma abierta
+  const op = useOpciones(p.lineas.map((l) => ({ k: l.id, descripcion: l.descripcion, codMax: l.codMax })), api.picking.opciones, { activo: abierta });
   const { total, resueltas, puntaje, completo } = p.avance;
   return (
     <li className={"tarjeta" + (completo ? " tarjeta--lista" : "")}>
@@ -59,7 +62,7 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
         <div className="tarjeta__cuerpo">
           {resumenEntrega(p.cabecera) && <p className="entrega">{resumenEntrega(p.cabecera)}</p>}
           <ul className="lineas">
-            {p.lineas.map((l) => <Linea key={l.id} code={p.code} l={l} pisos={pisos} alCambiar={alCambiar} />)}
+            {p.lineas.map((l) => <Linea key={l.id} code={p.code} l={l} pisos={pisos} alCambiar={alCambiar} guia={op.porLinea[l.id]} catalogoVacio={op.total === 0} />)}
           </ul>
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <button type="button" className="btn btn--primario btn--ancho" disabled={!completo || enviando} onClick={listo}>
@@ -71,7 +74,7 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
   );
 }
 
-function Linea({ code, l, pisos, alCambiar }) {
+function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
   const pk = l.picking;
   const [error, setError] = useState("");
   const [eligiendoPiso, setEligiendoPiso] = useState(false);
@@ -100,6 +103,20 @@ function Linea({ code, l, pisos, alCambiar }) {
       </div>
       {detalleLinea(l) && <p className="detalle">{detalleLinea(l)}</p>}
       {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
+      {guia && !catalogoVacio && (
+        <details className="opciones-cat" open={guia.total > 0 && guia.total <= 3}>
+          <summary>{guia.total === 0 ? "Sin coincidencias en el catálogo" : `${guia.total} ${guia.total === 1 ? "opción" : "opciones"} en el catálogo`}</summary>
+          <ul>
+            {guia.opciones.map((o) => (
+              <li key={o.id ?? o.codigo}>
+                <b>{o.codigo}</b> · {[o.descripcion, o.familia, o.subfamilia].filter(Boolean).join(" / ")}
+                <small>{[o.ubicacion && `Ubicación: ${o.ubicacion}`, (o.stockLV !== "" || o.stockSJL !== "") && `Stock LV ${o.stockLV === "" ? "—" : o.stockLV} · SJL ${o.stockSJL === "" ? "—" : o.stockSJL}`, o.equivalentes && `Equivalentes: ${o.equivalentes}`].filter(Boolean).join(" · ")}</small>
+              </li>
+            ))}
+            {guia.total > guia.opciones.length && <li className="nota-suave">y {guia.total - guia.opciones.length} más: afina la descripción</li>}
+          </ul>
+        </details>
+      )}
       <div className="linea__estado">
         <span className={"chip chip--" + pk.estado}>{ESTADOS[pk.estado]}{pk.estado === "encontrado" && pk.piso != null ? ` · piso ${pk.piso} · ${pk.puntaje} pts` : ""}</span>
         {l.modificadaTs && <span className="chip chip--aviso">Corregida por ventas</span>}

@@ -78,6 +78,50 @@ export default function Config() {
         {guardado && <p className="aviso-ok" role="status">Configuración guardada.</p>}
         <div className="botones"><button type="submit" className="btn btn--primario" disabled={guardando}>{guardando ? "Guardando…" : "Guardar configuración"}</button></div>
       </form>
+      <SincronizacionStock />
     </section>
+  );
+}
+
+// Estado de la sincronización de stock (hoja de cálculo → catálogo) y botón para correrla ahora.
+function SincronizacionStock() {
+  const [e, setE] = useState(null);
+  const [error, setError] = useState("");
+  const [corriendo, setCorriendo] = useState(false);
+  useEffect(() => { api.stock.estado().then(setE, (x) => setError(mensajeDeError(x))); }, []);
+
+  async function ahora() {
+    setCorriendo(true); setError("");
+    try { await api.stock.sincronizar(); setE(await api.stock.estado()); }
+    catch (x) { setError(mensajeDeError(x)); }
+    finally { setCorriendo(false); }
+  }
+  const u = e?.ultima;
+  return (
+    <details className="seccion" open style={{ marginTop: 16 }}>
+      <summary>Stock desde la hoja de cálculo</summary>
+      {!e ? (error ? <p className="aviso-error" role="alert">{error}</p> : <p className="cargando">Cargando…</p>)
+        : !e.configurado ? <p className="nota-suave">No está configurada. Faltan las variables de entorno del servidor (empresa, hoja y cuenta de Google); ver el README de topd.</p>
+        : (
+          <>
+            <p className="nota-suave">Lee la hoja cada {e.cadaMin ?? "—"} min y actualiza el catálogo: stock LV y SJL, ubicación, equivalentes y precio. Solo envía lo que cambió.</p>
+            {u ? (
+              <p role="status" className={u.ok ? "aviso-ok" : "aviso-error"}>
+                {new Date(u.ts).toLocaleString("es-PE")} · {u.ok
+                  ? `${u.leidas} productos en la hoja: ${u.creados} nuevos, ${u.actualizados} actualizados, ${u.sinCambios} sin cambios${u.desactivados ? `, ${u.desactivados} desactivados` : ""}${u.reactivados ? `, ${u.reactivados} reactivados` : ""}.`
+                  : `Falló: ${u.error}`}
+              </p>
+            ) : <p className="nota-suave">Aún no se ha sincronizado desde que arrancó el servidor.</p>}
+            {u?.avisos?.map((a) => <p key={a} className="aviso-error" role="alert">{a}</p>)}
+            {u?.descartadas?.length > 0 && (
+              <details><summary>{u.descartadas.length} fila(s) de la hoja no se pudieron cargar</summary>
+                <ul>{u.descartadas.map((d, i) => <li key={i}>{d.fila ? `Fila ${d.fila}` : "Fila"} · {d.codigo}: {d.error}</li>)}</ul>
+              </details>
+            )}
+            {error && <p className="aviso-error" role="alert">{error}</p>}
+            <div className="botones"><button type="button" className="btn" disabled={corriendo || e.corriendo} onClick={ahora}>{corriendo ? "Sincronizando…" : "Sincronizar ahora"}</button></div>
+          </>
+        )}
+    </details>
   );
 }

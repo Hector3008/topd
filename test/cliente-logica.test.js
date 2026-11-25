@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, puedeSupervisar, duracion, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
+import { permite, pisosDe, haceCuanto, cambioDeEstado, prepararProforma, dinero, reducirDimensiones, formularioDeLectura, sumaDelFormulario, coincideBusqueda, resumenEntrega, textoOpcion, ENTREGAS, SECCIONES_CABECERA, cabeceraVacia, resultadoDeLinea, requiereAtencion, puedeRevisar, puedeBandeja, formularioDeProforma, detalleLinea, puedeConfigurar, puedeSupervisar, vistaDeProforma, duracion, configParaEnviar, CIERRES_POR_ESTADO, MOTIVOS } from "../client/src/logica.js";
 
 describe("front de topd: lógica", () => {
   it("permite imita al núcleo", () => {
@@ -195,5 +195,33 @@ describe("supervisión", () => {
   it("tiene su propio permiso", () => {
     assert.equal(puedeSupervisar(["estacion:supervision"]), true);
     assert.equal(puedeSupervisar(["estacion:bandeja"]), false);
+  });
+});
+
+describe("vista previa del documento", () => {
+  const lineas = [
+    { cantidad: "2", descripcion: "Alternador", precioUnitario: "59", modelo: "AL-1", codMax: "MX-9", comentario: "urgente" },
+    { cantidad: "1", descripcion: "Bujía", precioUnitario: "" },
+    { cantidad: "3", descripcion: "Tachada", precioUnitario: "10", anulada: true },
+    { cantidad: "", descripcion: "", precioUnitario: "" },
+  ];
+  it("numera, ignora tachadas y vacías, y calcula importes", () => {
+    const v = vistaDeProforma({ lineas });
+    assert.deepEqual(v.items.map((i) => [i.n, i.descripcion, i.importe]), [[1, "Alternador", 118], [2, "Bujía", null]]);
+    assert.equal(v.items[0].detalle, "AL-1 · MX-9");
+    assert.equal(v.total, 118);
+    assert.equal(v.sinPrecios, true);
+  });
+  it("con factura o boleta separa el 18 % que ya viene en el precio; si no, no", () => {
+    const f = vistaDeProforma({ cabecera: { comprobante: "factura" }, lineas });
+    assert.deepEqual([f.conIgv, f.igv, f.subtotal, f.total], [true, 18, 100, 118]);
+    assert.equal(vistaDeProforma({ cabecera: { comprobante: "boleta" }, lineas }).igv, 18);
+    const p = vistaDeProforma({ cabecera: { comprobante: "proforma" }, lineas });
+    assert.deepEqual([p.conIgv, p.igv, p.subtotal], [false, 0, 118]);
+  });
+  it("funciona con el formulario vacío y suma lo pagado", () => {
+    const v = vistaDeProforma({});
+    assert.deepEqual([v.items.length, v.total, v.pagado], [0, 0, 0]);
+    assert.equal(vistaDeProforma({ pagos: [{ monto: "50.5" }, { monto: "" }, { monto: "10" }] }).pagado, 60.5);
   });
 });

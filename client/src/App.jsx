@@ -79,7 +79,7 @@ export default function App() {
         <a className="enlace" href={urlCuenta}>← Inicio</a>
         <span className="pestanas">
           {estaciones.map(([k, nombre]) => (
-            <button key={k} type="button" className={"pestana" + (actual === k ? " activa" : "")} onClick={() => { setEditando(null); ir(k); }}>{nombre}</button>
+            <button key={k} type="button" ref={(el) => { if (el && actual === k) el.scrollIntoView?.({ inline: "center", block: "nearest" }); }} className={"pestana" + (actual === k ? " activa" : "")} onClick={() => { setEditando(null); ir(k); }}>{nombre}</button>
           ))}
         </span>
         {yo.empresa?.nombre && <span className="empresa">{yo.empresa.nombre}</span>}

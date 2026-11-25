@@ -3,6 +3,10 @@
 // (máximo 4 KB por ítem). El stock se sincroniza desde la hoja de cálculo (5.74).
 //   FAMILIA → categoría del núcleo si hace falta; se conserva también aquí para filtrar como antes.
 export const CAMPOS_REPUESTO = Object.freeze({
+  CODIGO_FORMATEADO: "texto", // el código que ve el almacén (columna DICTIONARY de la hoja)
+  CODIGO: "texto",            // columna CODE de la hoja
+  ORIGEN: "texto",            // «hoja»: lo administra la sincronización de stock
+  HUELLA: "texto",            // resumen del último envío; evita reenviar lo que no cambió
   FAMILIA: "texto",
   SUBFAMILIA: "texto",
   PROVEEDOR: "texto",

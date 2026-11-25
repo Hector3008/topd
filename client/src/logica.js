@@ -164,6 +164,30 @@ export function formularioDeProforma(p) {
 export const sumaDelFormulario = (lineas) =>
   Math.round(lineas.filter((l) => !l.anulada).reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0), 0) * 100) / 100;
 
+/**
+ * Lo que dibuja la vista previa a partir del formulario tal como está (sin validar): sirve a medias, también con datos
+ * incompletos. Las líneas tachadas y las vacías no salen. El precio incluye IGV: con factura o boleta se separa el 18 %.
+ */
+export function vistaDeProforma({ cabecera = {}, lineas = [], pagos = [] } = {}) {
+  const items = lineas
+    .filter((l) => !l.anulada && (String(l.descripcion ?? "").trim() || String(l.cantidad ?? "").trim() || String(l.precioUnitario ?? "").trim()))
+    .map((l, i) => {
+      const cantidad = Number(l.cantidad) || 0;
+      const precio = String(l.precioUnitario ?? "").trim() === "" ? null : Number(l.precioUnitario) || 0;
+      return {
+        n: i + 1, cantidad: String(l.cantidad ?? "").trim(), descripcion: String(l.descripcion ?? "").trim(), detalle: detalleLinea(l),
+        comentario: String(l.comentario ?? "").trim(), precio, importe: precio == null ? null : Math.round(cantidad * precio * 100) / 100,
+        modelo: l.modelo ?? "", codMax: l.codMax ?? "", proveedor: l.proveedor ?? "", familia: l.familia ?? "",
+      };
+    })
+    .map((it, i) => ({ ...it, n: i + 1 }));
+  const total = Math.round(items.reduce((s, it) => s + (it.importe ?? 0), 0) * 100) / 100;
+  const conIgv = ["factura", "boleta"].includes(cabecera.comprobante);
+  const igv = conIgv ? Math.round((total - total / 1.18) * 100) / 100 : 0;
+  const pagado = Math.round(pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0) * 100) / 100;
+  return { items, total, conIgv, igv, subtotal: Math.round((total - igv) * 100) / 100, pagado, sinPrecios: items.some((it) => it.precio == null) };
+}
+
 /** Validación del formulario de nueva proforma; devuelve { cabecera, lineas } limpias o { error }. */
 export function prepararProforma({ cabecera = {}, lineas, pagos = [] }, { permitirVacio = false } = {}) {
   const limpias = [];
