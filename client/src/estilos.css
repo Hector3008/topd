@@ -174,5 +174,10 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .opciones-cat li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
 .opciones-cat small { display: block; color: var(--suave); }
 .hoja__descartada td { text-decoration: line-through; opacity: .5; }
-.hoja__descartada td.hoja__accion { text-decoration: none; opacity: 1; }
-.hoja__accion .btn { padding: 2px 8px; font-size: .8rem; white-space: nowrap; }
+.hoja__descartada .hoja__descartar { text-decoration: none; }
+.hoja__descartar { display: block; margin-top: 4px; padding: 2px 8px; font-size: .75rem; white-space: nowrap; }
+.sacar { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.sacar label { display: flex; align-items: center; gap: 4px; font-size: .85rem; }
+.sacar select { min-height: 36px; }
+.sacar .btn { min-width: 40px; min-height: 36px; padding: 2px 10px; }
+.sacar__n { min-width: 24px; text-align: center; font-weight: 600; }

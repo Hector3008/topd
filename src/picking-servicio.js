@@ -147,6 +147,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
         datos: {
           lineaId, de: actual?.estado ?? "pendiente", a: fila.estado, piso: fila.piso, taller: fila.taller,
           reconocido: fila.reconocido, cantidadEncontrada: fila.cantidadEncontrada, puntaje: fila.puntaje,
+          sacados: fila.sacados.map((s) => ({ codigo: s.codigo, cantidad: s.cantidad, piso: s.piso })),
           msDesdeInicio: fila.iniciadoTs ? fila.resueltoTs ? fila.resueltoTs - fila.iniciadoTs : null : null,
         },
       });

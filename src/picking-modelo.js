@@ -14,6 +14,8 @@ export const pickingSchema = new mongoose.Schema(
     taller: { type: Boolean, default: false },
     reconocido: { type: String, enum: [...RECONOCIMIENTOS, null], default: null },
     cantidadEncontrada: { type: Number, default: null },
+    // Opciones del catálogo que se sacaron (una línea puede salir de varias): { codigo, descripcion, cantidad, piso, puntaje }
+    sacados: { type: [new mongoose.Schema({ codigo: String, descripcion: { type: String, default: "" }, cantidad: Number, piso: Number, puntaje: { type: Number, default: 0 } }, { _id: false })], default: [] },
     nota: { type: String, default: "" },
     puntaje: { type: Number, default: 0 },
     iniciadoTs: { type: Date, default: null },

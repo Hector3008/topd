@@ -30,7 +30,10 @@ export function resultadoDeLinea(l) {
   const p = l.picking ?? {};
   if (p.estado === "no_encontrado") return "No se encontró";
   if (p.estado !== "encontrado") return ESTADOS[p.estado] ?? "Pendiente";
-  const partes = [`Piso ${p.piso}`];
+  const sacados = p.sacados ?? [];
+  const partes = sacados.length
+    ? [sacados.map((s) => `${s.cantidad} × ${s.codigo} (piso ${s.piso})`).join(" + ")]
+    : [`Piso ${p.piso}`];
   if (p.taller) partes.push("pasó por taller");
   if (p.reconocido) partes.push(p.reconocido === "foto" ? "reconocido por foto" : "reconocido por muestra");
   if (p.cantidadEncontrada !== l.cantidad) partes.push(`trajo ${p.cantidadEncontrada} de ${l.cantidad}`);

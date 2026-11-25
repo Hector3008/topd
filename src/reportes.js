@@ -64,6 +64,22 @@ function resumir(filas) {
  * Arma el reporte desde las filas del almacén ya resueltas en el rango. `nombres` traduce el id de la persona a su nombre.
  * Las filas pendientes o en búsqueda se ignoran: todavía no hay nada que medir.
  */
+/**
+ * Hallazgos por piso. Una línea sacada de varias opciones cuenta un hallazgo por opción, en el piso de cada una; los puntos
+ * extra de la línea (taller, muestra, foto) se atribuyen al piso de la primera opción.
+ */
+function porPisoDe(filas) {
+  const m = new Map();
+  const sumar = (piso, puntaje) => { const x = m.get(piso) ?? { piso, lineas: 0, puntaje: 0 }; x.lineas += 1; x.puntaje += puntaje; m.set(piso, x); };
+  for (const f of filas) {
+    if (f.sacados?.length) {
+      const extras = (f.puntaje ?? 0) - f.sacados.reduce((s, x) => s + (x.puntaje ?? 0), 0);
+      f.sacados.forEach((s, i) => sumar(s.piso, (s.puntaje ?? 0) + (i === 0 ? extras : 0)));
+    } else if (f.piso != null) sumar(f.piso, f.puntaje ?? 0);
+  }
+  return [...m.values()].map((x) => ({ ...x, puntaje: redondeo(x.puntaje) })).sort((a, b) => a.piso - b.piso);
+}
+
 export function armarReporte(filas, nombres = {}, { zona = ZONA_POR_DEFECTO } = {}) {
   const hechas = (filas ?? []).filter((f) => ["encontrado", "no_encontrado"].includes(f.estado) && f.resueltoTs);
   const agrupar = (clave) => {
@@ -83,9 +99,7 @@ export function armarReporte(filas, nombres = {}, { zona = ZONA_POR_DEFECTO } = 
     porPersona: [...agrupar((f) => (f.porId ? String(f.porId) : ""))]
       .map(([id, fs]) => ({ id, nombre: nombres[id] ?? (id ? "Persona sin nombre" : "Sin registrar"), ...resumir(fs) }))
       .sort((a, b) => b.puntaje - a.puntaje || b.lineas - a.lineas),
-    porPiso: [...agrupar((f) => f.piso)].filter(([p]) => p != null)
-      .map(([piso, fs]) => ({ piso, lineas: fs.length, puntaje: redondeo(fs.reduce((s, f) => s + (f.puntaje ?? 0), 0)) }))
-      .sort((a, b) => a.piso - b.piso),
+    porPiso: porPisoDe(hechas),
     porDia: [...agrupar((f) => diaDe(f.resueltoTs, zona))]
       .map(([dia, fs]) => ({ dia, ...resumir(fs) }))
       .sort((a, b) => a.dia.localeCompare(b.dia)),

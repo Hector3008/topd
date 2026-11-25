@@ -80,9 +80,9 @@ export default function VistaPrevia({ cabecera, lineas, pagos, emisor, codigo, v
           {op.error && <p className="aviso-error" role="alert">{op.error}</p>}
           {op.total === 0 && <p className="hoja__vacio">El catálogo de esta empresa está vacío: todavía no hay opciones que mostrar.</p>}
           <div className="hoja__tabla"><table className="hoja__guia">
-            <thead><tr><th>Item</th><th>Cant.</th><th>Precio uni</th><th>Pedido</th><th>Comentario</th><th>Código</th><th>LV</th><th>SJL</th><th>Descripción</th><th>Equivalente</th><th>Ubicación</th><th>Precio sug.</th>{alDescartar && <th>¿Sirve?</th>}</tr></thead>
+            <thead><tr><th>Item</th><th>Cant.</th><th>Precio uni</th><th>Pedido</th><th>Comentario</th><th>Código</th><th>LV</th><th>SJL</th><th>Descripción</th><th>Equivalente</th><th>Ubicación</th><th>Precio sug.</th></tr></thead>
             <tbody>
-              {v.items.length === 0 && <tr><td colSpan={alDescartar ? 13 : 12} className="hoja__vacio">Todavía no hay líneas.</td></tr>}
+              {v.items.length === 0 && <tr><td colSpan={12} className="hoja__vacio">Todavía no hay líneas.</td></tr>}
               {v.items.map((it) => {
                 const r = op.porLinea[String(it.n)];
                 const filas = r?.opciones?.length ? r.opciones : [null];
@@ -97,21 +97,19 @@ export default function VistaPrevia({ cabecera, lineas, pagos, emisor, codigo, v
                     <td>{j === 0 ? it.comentario : ""}</td>
                     {o ? (
                       <>
-                        <td>{o.codigo}</td><td>{o.stockLV}</td><td>{o.stockSJL}</td>
+                        <td>
+                          {o.codigo}
+                          {alDescartar && <button type="button" className="btn hoja__descartar" aria-pressed={fuera} aria-label={`${fuera ? "Restaurar" : "Descartar"} ${o.codigo} en la línea ${it.n}`} onClick={() => alDescartar(it.indice, o.codigo)}>{fuera ? "Restaurar" : "No sirve"}</button>}
+                        </td><td>{o.stockLV}</td><td>{o.stockSJL}</td>
                         <td>{[o.descripcion, o.familia, o.subfamilia].filter(Boolean).join(" / ")}</td>
                         <td>{o.equivalentes}</td><td>{o.ubicacion}</td><td>{o.precioSugerido ?? ""}</td>
-                        {alDescartar && (
-                          <td className="hoja__accion">
-                            <button type="button" className="btn" aria-pressed={fuera} aria-label={`${fuera ? "Restaurar" : "Descartar"} ${o.codigo} en la línea ${it.n}`} onClick={() => alDescartar(it.indice, o.codigo)}>{fuera ? "Restaurar" : "No sirve"}</button>
-                          </td>
-                        )}
                       </>
                     ) : (
-                      <td colSpan={alDescartar ? 8 : 7} className="hoja__vacio">{!r ? (op.cargando ? "Buscando en el catálogo…" : "") : "no encontrado"}</td>
+                      <td colSpan={7} className="hoja__vacio">{!r ? (op.cargando ? "Buscando en el catálogo…" : "") : "no encontrado"}</td>
                     )}
                   </tr>
                   );
-                }).concat(r && r.total > r.opciones.length ? [<tr key={`${it.n}-mas`}><td colSpan={5} /><td colSpan={alDescartar ? 8 : 7} className="hoja__vacio">y {r.total - r.opciones.length} opciones más: afina la descripción</td></tr>] : []);
+                }).concat(r && r.total > r.opciones.length ? [<tr key={`${it.n}-mas`}><td colSpan={5} /><td colSpan={7} className="hoja__vacio">y {r.total - r.opciones.length} opciones más: afina la descripción</td></tr>] : []);
               })}
             </tbody>
           </table></div>

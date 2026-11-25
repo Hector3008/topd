@@ -32,6 +32,7 @@ export function lineasDelDocumento(doc) {
 }
 
 const esEntero = (n) => Number.isInteger(n);
+export const MAX_SACADOS = 20;
 
 /**
  * Aplica un cambio parcial sobre la fila actual (o una vacía) y valida el resultado completo.
@@ -44,6 +45,7 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
     taller: false,
     reconocido: null,
     cantidadEncontrada: null,
+    sacados: [],
     nota: "",
     puntaje: 0,
     iniciadoTs: null,
@@ -77,29 +79,64 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
       throw new ErrorPicking("CANTIDAD_INVALIDA", "cantidadEncontrada debe ser un entero mayor o igual a 0");
     fila.cantidadEncontrada = c.cantidadEncontrada;
   }
+  // Qué opciones del catálogo se sacaron y cuántas de cada una: [{ codigo, descripcion?, cantidad, piso }]. Una línea de 5 puede
+  // atenderse con 3 de una opción y 2 de otra. Reemplaza la lista completa; el puntaje de cada opción es el del piso en que se sacó.
+  if (c.sacados !== undefined) {
+    if (!Array.isArray(c.sacados) || c.sacados.length > MAX_SACADOS)
+      throw new ErrorPicking("SACADOS_INVALIDOS", `sacados debe ser una lista de hasta ${MAX_SACADOS} opciones`);
+    const porCodigo = new Map();
+    for (const s of c.sacados) {
+      const codigo = typeof s?.codigo === "string" ? s.codigo.trim().slice(0, 40) : "";
+      if (!codigo) throw new ErrorPicking("SACADOS_INVALIDOS", "Cada opción sacada necesita su código");
+      if (!(esEntero(s.cantidad) && s.cantidad >= 1 && s.cantidad <= 99999))
+        throw new ErrorPicking("CANTIDAD_INVALIDA", `La cantidad sacada de ${codigo} debe ser un entero de 1 en adelante`);
+      if (!(esEntero(s.piso) && s.piso in puntajesPiso))
+        throw new ErrorPicking("PISO_INVALIDO", `Indica el piso de ${codigo}`, { validos: Object.keys(puntajesPiso).map(Number) });
+      const previo = (actual?.sacados ?? []).find((x) => x.codigo === codigo && x.piso === s.piso);
+      porCodigo.set(codigo, {
+        codigo, descripcion: typeof s.descripcion === "string" ? s.descripcion.trim().slice(0, 120) : "",
+        cantidad: s.cantidad, piso: s.piso,
+        puntaje: previo?.puntaje ?? puntajesPiso[s.piso] ?? 0, // lo ya medido no cambia si cambia la tabla
+      });
+    }
+    fila.sacados = [...porCodigo.values()];
+    // Sacar algo equivale a «encontrado»; quitar todo vuelve a «buscando» (salvo que el estado venga explícito)
+    if (c.estado === undefined) {
+      if (fila.sacados.length) fila.estado = "encontrado";
+      else if (fila.estado === "encontrado") fila.estado = "buscando";
+    }
+  }
   if (c.nota !== undefined) {
     if (typeof c.nota !== "string" || c.nota.length > 300)
       throw new ErrorPicking("NOTA_INVALIDA", "nota debe ser texto de hasta 300 caracteres");
     fila.nota = c.nota.trim();
   }
 
-  if (fila.estado === "encontrado") {
+  if (fila.estado === "encontrado" && fila.sacados.length) {
+    // El hallazgo se mide por opción: cantidad = suma, piso de referencia = el de la primera opción
+    fila.cantidadEncontrada = fila.sacados.reduce((s, x) => s + x.cantidad, 0);
+    fila.piso = fila.sacados[0].piso;
+  } else if (fila.estado === "encontrado") {
+    fila.sacados = [];
     if (fila.piso == null) throw new ErrorPicking("PISO_REQUERIDO", "Para marcar 'encontrado' indica el piso");
     fila.cantidadEncontrada ??= linea?.cantidad ?? 1;
     if (fila.cantidadEncontrada < 1)
       throw new ErrorPicking("CANTIDAD_INVALIDA", "Un ítem encontrado lleva al menos 1 unidad");
   } else if (fila.estado === "no_encontrado") {
+    fila.sacados = [];
     fila.piso = null;
     fila.cantidadEncontrada = 0;
   } else {
     // pendiente / buscando: aún no hay hallazgo
+    fila.sacados = [];
     fila.piso = null;
     fila.cantidadEncontrada = null;
   }
 
   // Piso + extras configurables (taller, reconocido por muestra o por foto); por defecto los extras valen 0
+  const basePiso = fila.sacados.length ? fila.sacados.reduce((s, x) => s + (x.puntaje ?? 0), 0) : puntajesPiso[fila.piso] ?? 0;
   fila.puntaje = fila.estado === "encontrado"
-    ? Math.round(((puntajesPiso[fila.piso] ?? 0) + (fila.taller ? extras.taller ?? 0 : 0) + (fila.reconocido ? extras[fila.reconocido] ?? 0 : 0)) * 100) / 100
+    ? Math.round((basePiso + (fila.taller ? extras.taller ?? 0 : 0) + (fila.reconocido ? extras[fila.reconocido] ?? 0 : 0)) * 100) / 100
     : 0;
 
   if (fila.estado !== "pendiente" && !fila.iniciadoTs) fila.iniciadoTs = ahora;
@@ -118,10 +155,10 @@ export function combinarAvance(lineas, filas) {
       picking: f
         ? {
             estado: f.estado, piso: f.piso, taller: f.taller, reconocido: f.reconocido,
-            cantidadEncontrada: f.cantidadEncontrada, nota: f.nota, puntaje: f.puntaje,
+            cantidadEncontrada: f.cantidadEncontrada, sacados: f.sacados ?? [], nota: f.nota, puntaje: f.puntaje,
             iniciadoTs: f.iniciadoTs, resueltoTs: f.resueltoTs, porId: f.porId ?? null,
           }
-        : { estado: "pendiente", piso: null, taller: false, reconocido: null, cantidadEncontrada: null, nota: "", puntaje: 0 },
+        : { estado: "pendiente", piso: null, taller: false, reconocido: null, cantidadEncontrada: null, sacados: [], nota: "", puntaje: 0 },
     };
   });
 }
