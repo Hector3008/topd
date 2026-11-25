@@ -156,3 +156,7 @@ Reemplaza al cron del siscore (que cada minuto borraba y reinsertaba todo). `src
 - La hoja debe estar compartida (lector) con el correo de la cuenta de servicio. Sin dependencias nuevas: el token se firma con `crypto`.
 - `GET /stock/estado` y `POST /stock/sincronizar` (`estacion:configuracion`); la pestaña Configuración muestra la última corrida y tiene «Sincronizar ahora». La guía de almacén olvida su caché al instante si hubo cambios.
 - Una sola empresa por servidor (la de `STOCK_EMPRESA_ID`), como el visor de `/stock`.
+
+## Descartar opciones de la guía (corte N)
+
+En la hoja «Guía de almacén» de la estación de creación, cada opción del catálogo tiene el botón **No sirve** (y **Restaurar**): la opción queda tachada. Los códigos descartados se guardan en la línea de la proforma (`lineas[].descartadas`, hasta 50, el código que se ve en la guía) y se conservan al editar. En el Almacén, `POST /picking/opciones` recibe `excluir` por línea y **no devuelve** las descartadas: el desplegable de la línea muestra solo las que quedan («N opciones, M descartadas por ventas») o «Ventas descartó todas las opciones del catálogo». Si todas las opciones por `codMax` se descartan, no se salta a otras por descripción. Cambiar los descartes de una línea al editar la marca como «Corregida por ventas» pero **no** reinicia su avance en el almacén. La vista previa de creación siempre muestra todas (para poder restaurar).

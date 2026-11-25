@@ -25,14 +25,15 @@ export function crearServicioGuia({ core, ahora = () => Date.now() }) {
   }
 
   return {
-    /** lineas: [{ k, descripcion, codMax }] → { catalogo: { total }, lineas: { [k]: { opciones, total, por } } } */
+    /** lineas: [{ k, descripcion, codMax, excluir? }] → { catalogo: { total }, lineas: { [k]: { opciones, total, por } } } */
     async opciones({ empresaId, lineas, max = MAX_OPCIONES }) {
       if (!Array.isArray(lineas) || lineas.length > MAX_LINEAS) throw new ErrorPicking("LINEAS_INVALIDAS", `Envía hasta ${MAX_LINEAS} líneas`);
       const { indice: idx, total } = await indice(empresaId);
       const salida = {};
       for (const l of lineas) {
         if (l == null || typeof l.k !== "string" || l.k.length > 40) throw new ErrorPicking("LINEAS_INVALIDAS", "Cada línea necesita una clave `k`");
-        salida[l.k] = buscarOpciones(idx, { descripcion: String(l.descripcion ?? "").slice(0, 200), codMax: String(l.codMax ?? "").slice(0, 80) }, { max });
+        const excluir = (Array.isArray(l.excluir) ? l.excluir : []).filter((c) => typeof c === "string").slice(0, 50).map((c) => c.slice(0, 40));
+        salida[l.k] = buscarOpciones(idx, { descripcion: String(l.descripcion ?? "").slice(0, 200), codMax: String(l.codMax ?? "").slice(0, 80), excluir }, { max });
       }
       return { catalogo: { total }, lineas: salida };
     },

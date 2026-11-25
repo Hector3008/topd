@@ -33,7 +33,7 @@ describe("guía de almacén: opciones del catálogo", () => {
     assert.equal(buscarOpciones(idx, { descripcion: "viejo" }).total, 0);
   });
   it("sin coincidencias o sin texto: «no encontrado» (total 0)", () => {
-    assert.deepEqual(buscarOpciones(idx, { descripcion: "zzz" }), { opciones: [], total: 0, por: null });
+    assert.deepEqual(buscarOpciones(idx, { descripcion: "zzz" }), { opciones: [], total: 0, por: null, descartadas: 0 });
     assert.equal(buscarOpciones(idx, { descripcion: "  " }).total, 0);
     assert.equal(buscarOpciones([], { descripcion: "bujia" }).total, 0);
   });

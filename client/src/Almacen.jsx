@@ -48,7 +48,7 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
   }
 
   // Opciones del catálogo de cada línea (guía de almacén), solo con la proforma abierta
-  const op = useOpciones(p.lineas.map((l) => ({ k: l.id, descripcion: l.descripcion, codMax: l.codMax })), api.picking.opciones, { activo: abierta });
+  const op = useOpciones(p.lineas.map((l) => ({ k: l.id, descripcion: l.descripcion, codMax: l.codMax, excluir: l.descartadas ?? [] })), api.picking.opciones, { activo: abierta });
   const { total, resueltas, puntaje, completo } = p.avance;
   return (
     <li className={"tarjeta" + (completo ? " tarjeta--lista" : "")}>
@@ -105,7 +105,7 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
       {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
       {guia && !catalogoVacio && (
         <details className="opciones-cat" open={guia.total > 0 && guia.total <= 3}>
-          <summary>{guia.total === 0 ? "Sin coincidencias en el catálogo" : `${guia.total} ${guia.total === 1 ? "opción" : "opciones"} en el catálogo`}</summary>
+          <summary>{guia.total === 0 ? (guia.descartadas > 0 ? "Ventas descartó todas las opciones del catálogo" : "Sin coincidencias en el catálogo") : `${guia.total} ${guia.total === 1 ? "opción" : "opciones"} en el catálogo`}{guia.total > 0 && guia.descartadas > 0 ? ` (${guia.descartadas} descartada${guia.descartadas === 1 ? "" : "s"} por ventas)` : ""}</summary>
           <ul>
             {guia.opciones.map((o) => (
               <li key={o.id ?? o.codigo}>

@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { mensajeDeError } from "./api.js";
 
 /**
- * Opciones del catálogo para cada línea (guía de almacén). `lineas`: [{ k, descripcion, codMax }]; `buscar` es la llamada
+ * Opciones del catálogo para cada línea (guía de almacén). `lineas`: [{ k, descripcion, codMax, excluir? }]; `buscar` es la llamada
  * a la API. Espera a que se deje de escribir (500 ms) y solo vuelve a preguntar si cambió el texto de alguna línea.
  * Devuelve { porLinea: { [k]: { opciones, total, por } }, total (productos del catálogo), cargando, error }.
  */
 export function useOpciones(lineas, buscar, { activo = true, espera = 500 } = {}) {
   const [estado, setEstado] = useState({ porLinea: {}, total: null, cargando: false, error: "" });
   const util = lineas.filter((l) => (l.descripcion ?? "").trim().length >= 2 || (l.codMax ?? "").trim());
-  const clave = JSON.stringify(util.map((l) => [l.k, l.descripcion, l.codMax]));
+  const clave = JSON.stringify(util.map((l) => [l.k, l.descripcion, l.codMax, l.excluir ?? []]));
   const fn = useRef(buscar); fn.current = buscar;
 
   useEffect(() => {

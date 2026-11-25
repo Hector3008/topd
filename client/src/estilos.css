@@ -173,3 +173,6 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .opciones-cat ul { list-style: none; padding: 0; margin: 4px 0 0; }
 .opciones-cat li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
 .opciones-cat small { display: block; color: var(--suave); }
+.hoja__descartada td { text-decoration: line-through; opacity: .5; }
+.hoja__descartada td.hoja__accion { text-decoration: none; opacity: 1; }
+.hoja__accion .btn { padding: 2px 8px; font-size: .8rem; white-space: nowrap; }

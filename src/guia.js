@@ -40,11 +40,17 @@ function coincidencias(indice, texto) {
  * porque es exacto; si no da nada, o no hay código, se busca por la descripción como en el siscore.
  * Devuelve { opciones (hasta `max`), total, por: "codigo" | "descripcion" | null }; total 0 = «no encontrado».
  */
-export function buscarOpciones(indice, { descripcion = "", codMax = "" } = {}, { max = MAX_OPCIONES } = {}) {
+export function buscarOpciones(indice, { descripcion = "", codMax = "", excluir = [] } = {}, { max = MAX_OPCIONES } = {}) {
+  // `excluir`: códigos que ventas descartó por no ser compatibles. Se quitan DESPUÉS de decidir por qué vía se busca, para que
+  // descartar todas las del código no haga saltar a otras opciones de la descripción.
+  const fuera = new Set((Array.isArray(excluir) ? excluir : []).map((c) => normalizar(c).trim()).filter(Boolean));
+  const descartado = (i) => fuera.has(normalizar(atr(i, "CODIGO_FORMATEADO") || i.codigo).trim()) || fuera.has(normalizar(i.codigo).trim());
   for (const [por, texto] of [["codigo", codMax], ["descripcion", descripcion]]) {
     if (!String(texto ?? "").trim()) continue;
     const hallados = coincidencias(indice, texto);
-    if (hallados.length) return { opciones: hallados.slice(0, max).map(opcionDeItem), total: hallados.length, por };
+    if (!hallados.length) continue;
+    const quedan = fuera.size ? hallados.filter((i) => !descartado(i)) : hallados;
+    return { opciones: quedan.slice(0, max).map(opcionDeItem), total: quedan.length, por, descartadas: hallados.length - quedan.length };
   }
-  return { opciones: [], total: 0, por: null };
+  return { opciones: [], total: 0, por: null, descartadas: 0 };
 }

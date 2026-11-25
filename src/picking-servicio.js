@@ -305,14 +305,18 @@ export function limpiarLineas(lineas, existentes = null, ahora = new Date(), { p
     // Datos de catálogo que trae el archivo (modelo, código Max, proveedor, familia): texto corto, opcional
     const catalogo = Object.fromEntries(["modelo", "codMax", "proveedor", "familia"]
       .map((k) => [k, typeof l?.[k] === "string" ? l[k].trim().slice(0, 120) : ""]).filter(([, v]) => v));
+    // Opciones del catálogo que ventas marcó como no compatibles: no llegan a la guía del almacén
+    const descartadas = [...new Set((Array.isArray(l?.descartadas) ? l.descartadas : [])
+      .filter((c) => typeof c === "string").map((c) => c.trim().slice(0, 40)).filter(Boolean))].slice(0, 50);
     const base = {
-      id, cantidad, descripcion, precioUnitario, ...catalogo,
+      id, cantidad, descripcion, precioUnitario, ...catalogo, ...(descartadas.length && { descartadas }),
       importe: precioUnitario == null ? null : Math.round(cantidad * precioUnitario * 100) / 100,
       comentario, origen: previa?.origen ?? "libre", anulada,
     };
     if (!previa) return existentes ? { ...base, modificadaTs: ahora } : base;
     const cambio = ["modelo", "codMax", "proveedor", "familia"].some((k) => (previa[k] ?? "") !== (catalogo[k] ?? "")) || previa.cantidad !== cantidad || previa.descripcion !== descripcion || (previa.precioUnitario ?? null) !== precioUnitario
-      || (previa.comentario ?? "") !== comentario || Boolean(previa.anulada) !== anulada;
+      || (previa.comentario ?? "") !== comentario || Boolean(previa.anulada) !== anulada
+      || JSON.stringify([...(previa.descartadas ?? [])].sort()) !== JSON.stringify([...descartadas].sort());
     // Si no cambió nada se conserva la marca anterior (si la tenía)
     return cambio ? { ...base, modificadaTs: ahora } : { ...base, ...(previa.modificadaTs && { modificadaTs: previa.modificadaTs }) };
   });

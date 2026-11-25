@@ -68,6 +68,12 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
   useEffect(() => { api.proformas.opciones().then((d) => setEmisores(d.emisores ?? []), () => {}); }, []);
   useEffect(() => { if (editando) return; api.ocr().then((d) => setOcrActivo(d.activo), () => setOcrActivo(false)); }, []);
 
+  // Marca o desmarca una opción del catálogo como no compatible con la línea i (no llega al almacén)
+  const descartarOpcion = (i, codigo) => setLineas((ls) => ls.map((l, j) => {
+    if (j !== i) return l;
+    const actuales = l.descartadas ?? [];
+    return { ...l, descartadas: actuales.includes(codigo) ? actuales.filter((c) => c !== codigo) : [...actuales, codigo] };
+  }));
   const cambiar = (i, campo, valor) => setLineas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: valor, dudoso: campo === "anulada" ? l.dudoso : false } : l)));
   const suma = sumaDelFormulario(lineas);
   const total = lineas.filter((l) => !l.anulada).reduce((s, l) => s + (Number(l.cantidad) || 0) * (Number(l.precioUnitario) || 0), 0);
@@ -311,7 +317,7 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
       <aside className="vista-col">
         <details className="vista-det" open={abiertaVista} onToggle={(e) => setAbiertaVista(e.currentTarget.open)}>
           <summary>Vista previa del documento</summary>
-          <VistaPrevia cabecera={cabecera} lineas={lineas} pagos={pagos} emisor={emisorElegido} codigo={editando ? codigo : null} version={editando ? version : null} estado={editando ? estado : null} />
+          <VistaPrevia alDescartar={descartarOpcion} cabecera={cabecera} lineas={lineas} pagos={pagos} emisor={emisorElegido} codigo={editando ? codigo : null} version={editando ? version : null} estado={editando ? estado : null} />
         </details>
       </aside>
       </div>

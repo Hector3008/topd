@@ -154,6 +154,7 @@ export function formularioDeProforma(p) {
     comentario: l.comentario ?? "",
     anulada: l.anulada === true,
     dudoso: false,
+    descartadas: Array.isArray(l.descartadas) ? [...l.descartadas] : [],
     ...catalogoDe(l),
   }));
   const pagos = (p?.pagos ?? []).map((x) => ({ cuenta: x.cuenta ?? "", monto: x.monto == null ? "" : String(x.monto), operacion: x.operacion ?? "" }));
@@ -170,14 +171,16 @@ export const sumaDelFormulario = (lineas) =>
  */
 export function vistaDeProforma({ cabecera = {}, lineas = [], pagos = [] } = {}) {
   const items = lineas
-    .filter((l) => !l.anulada && (String(l.descripcion ?? "").trim() || String(l.cantidad ?? "").trim() || String(l.precioUnitario ?? "").trim()))
-    .map((l, i) => {
+    .map((l, indice) => ({ l, indice }))
+    .filter(({ l }) => !l.anulada && (String(l.descripcion ?? "").trim() || String(l.cantidad ?? "").trim() || String(l.precioUnitario ?? "").trim()))
+    .map(({ l, indice }, i) => {
       const cantidad = Number(l.cantidad) || 0;
       const precio = String(l.precioUnitario ?? "").trim() === "" ? null : Number(l.precioUnitario) || 0;
       return {
         n: i + 1, cantidad: String(l.cantidad ?? "").trim(), descripcion: String(l.descripcion ?? "").trim(), detalle: detalleLinea(l),
         comentario: String(l.comentario ?? "").trim(), precio, importe: precio == null ? null : Math.round(cantidad * precio * 100) / 100,
         modelo: l.modelo ?? "", codMax: l.codMax ?? "", proveedor: l.proveedor ?? "", familia: l.familia ?? "",
+        indice, descartadas: Array.isArray(l.descartadas) ? l.descartadas : [], // indice = posición en el formulario (para marcar opciones)
       };
     })
     .map((it, i) => ({ ...it, n: i + 1 }));
@@ -201,7 +204,7 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }, { permit
       return { error: `La línea ${i + 1} necesita cantidad entera y descripción.` };
     const precio = String(l.precioUnitario ?? "").trim();
     if (precio !== "" && !(Number(precio) >= 0)) return { error: `El precio de la línea ${i + 1} no es válido.` };
-    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true });
+    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true, ...(Array.isArray(l.descartadas) && l.descartadas.length && { descartadas: l.descartadas }) });
   }
   if (!limpias.length && !permitirVacio) return { error: "Agrega al menos una línea." };
   const limpia = {};
