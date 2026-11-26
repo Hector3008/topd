@@ -40,6 +40,17 @@ export function resultadoDeLinea(l) {
   return partes.join(" · ");
 }
 
+/**
+ * Lo que el revisor debe marcar de una línea: una casilla por cada opción que sacó el almacén (3 de una y 2 de otra son dos
+ * cosas distintas que comprobar) o, si no hay opciones, una sola por la línea. Devuelve [{ clave, texto, detalle }].
+ */
+export function partesDeRevision(l) {
+  const sacados = l.picking?.sacados ?? [];
+  if (sacados.length && l.picking?.estado === "encontrado")
+    return sacados.map((s) => ({ clave: `${l.id}:${s.codigo}`, texto: `${s.cantidad} × ${s.codigo} (piso ${s.piso})`, detalle: s.descripcion ?? "" }));
+  return [{ clave: l.id, texto: "esta línea", detalle: "" }];
+}
+
 /** Líneas que merecen un vistazo del revisor: faltantes, cantidades distintas o notas. */
 export const requiereAtencion = (l) =>
   l.picking?.estado === "no_encontrado" || (l.picking?.estado === "encontrado" && l.picking.cantidadEncontrada !== l.cantidad) || Boolean(l.picking?.nota);
@@ -117,6 +128,22 @@ export function resumenEntrega(c = {}) {
   return partes.join(" · ");
 }
 
+/** Miniatura de una foto de Drive a partir de la URL guardada (la base solo guarda la URL; la miniatura se deduce del id). */
+export function miniaturaDe(url, ancho = 400) {
+  const id = /[?&]id=([\w-]+)/.exec(String(url ?? ""))?.[1];
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w${ancho}` : "";
+}
+
+/** Fotos de una línea separadas por origen: referencia de ventas, evidencia del almacén y de la revisión. */
+export function fotosDeLinea(l) {
+  const propias = l.picking?.fotos ?? [];
+  return {
+    referencia: l.fotos ?? [],
+    almacen: propias.filter((f) => f.etapa === "almacen").map((f) => f.url),
+    revision: propias.filter((f) => f.etapa === "revision").map((f) => f.url),
+  };
+}
+
 /** Tamaño al que se reduce la foto antes de enviarla (lado mayor `max`), sin agrandar nunca. */
 export function reducirDimensiones(ancho, alto, max = 1600) {
   const escala = Math.min(1, max / Math.max(ancho, alto));
@@ -158,6 +185,7 @@ export function formularioDeProforma(p) {
     anulada: l.anulada === true,
     dudoso: false,
     descartadas: Array.isArray(l.descartadas) ? [...l.descartadas] : [],
+    fotos: Array.isArray(l.fotos) ? [...l.fotos] : [],
     ...catalogoDe(l),
   }));
   const pagos = (p?.pagos ?? []).map((x) => ({ cuenta: x.cuenta ?? "", monto: x.monto == null ? "" : String(x.monto), operacion: x.operacion ?? "" }));
@@ -207,7 +235,7 @@ export function prepararProforma({ cabecera = {}, lineas, pagos = [] }, { permit
       return { error: `La línea ${i + 1} necesita cantidad entera y descripción.` };
     const precio = String(l.precioUnitario ?? "").trim();
     if (precio !== "" && !(Number(precio) >= 0)) return { error: `El precio de la línea ${i + 1} no es válido.` };
-    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true, ...(Array.isArray(l.descartadas) && l.descartadas.length && { descartadas: l.descartadas }) });
+    limpias.push({ ...(l.id && { id: l.id }), cantidad, descripcion, precioUnitario: precio === "" ? null : Number(precio), ...catalogoDe(l), comentario: String(l.comentario ?? "").trim(), anulada: l.anulada === true, ...(Array.isArray(l.descartadas) && l.descartadas.length && { descartadas: l.descartadas }), ...(Array.isArray(l.fotos) && l.fotos.length && { fotos: l.fotos }) });
   }
   if (!limpias.length && !permitirVacio) return { error: "Agrega al menos una línea." };
   const limpia = {};
@@ -248,3 +276,9 @@ export function coincideBusqueda(p, texto) {
   const c = p.cabecera ?? {};
   return [p.code, c.cliente, c.vendedor, c.referencia, c.ciudad].some((v) => String(v ?? "").toLowerCase().includes(q));
 }
+
+/** Unidades que todavía faltan para completar una línea con lo ya sacado (nunca negativo). */
+export const faltanteDeLinea = (l, sacados = l.picking?.sacados ?? []) => Math.max(0, l.cantidad - sacados.reduce((t, s) => t + s.cantidad, 0));
+
+/** Quién sumó una línea al pedido, para el rótulo («Agregada por el almacén»); vacío si venía en el pedido. */
+export const textoAgregada = (l) => (l.agregada?.etapa === "revision" ? "Agregada en la revisión" : l.agregada?.etapa === "almacen" ? "Agregada por el almacén" : "");

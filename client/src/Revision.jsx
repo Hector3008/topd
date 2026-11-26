@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { api, mensajeDeError } from "./api.js";
-import { haceCuanto, requiereAtencion, resumenEntrega } from "./logica.js";
+import { haceCuanto, partesDeRevision, pisosDe, requiereAtencion, resumenEntrega } from "./logica.js";
+import AgregarItem from "./AgregarItem.jsx";
+
+const buscarCatalogo = async (texto) => (await api.revision.opciones([{ k: "q", descripcion: texto }])).lineas?.q ?? { opciones: [], total: 0 };
 import { useSondeo } from "./useSondeo.js";
 import LineasLectura from "./LineasLectura.jsx";
 
-// Revisión (despacho): valida el pedido que armó el almacén. Para cerrar hay que marcar cada línea como revisada
+// Revisión (despacho): valida el pedido que armó el almacén. Para cerrar hay que marcar como revisada cada línea (o cada opción sacada de una línea)
 // (las marcas viven en esta pantalla: es la atención del revisor, no un dato del documento).
 export default function Revision() {
   const { datos, error, ahora, cargar } = useSondeo(api.revision.pendientes);
@@ -23,7 +26,7 @@ export default function Revision() {
         : (
           <ul className="lista">
             {proformas.map((p) => (
-              <Pedido key={p.code} p={p} ahora={ahora} abierta={abierta === p.code}
+              <Pedido key={p.code} p={p} pisos={pisosDe(datos.puntajesPiso)} ahora={ahora} abierta={abierta === p.code}
                 alAbrir={() => setAbierta(abierta === p.code ? null : p.code)} alCerrar={() => cargar(true)} />
             ))}
           </ul>
@@ -32,11 +35,14 @@ export default function Revision() {
   );
 }
 
-function Pedido({ p, ahora, abierta, alAbrir, alCerrar }) {
+function Pedido({ p, pisos, ahora, abierta, alAbrir, alCerrar }) {
   const [marcas, setMarcas] = useState({});
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const todas = p.lineas.every((l) => marcas[l.id]);
+  // Se revisa opción por opción: una línea sacada de dos opciones lleva dos casillas
+  const partes = p.lineas.flatMap(partesDeRevision);
+  const faltan = partes.filter((x) => !marcas[x.clave]).length;
+  const todas = faltan === 0;
   const atencion = p.lineas.filter(requiereAtencion).length;
 
   async function cerrar() {
@@ -59,10 +65,24 @@ function Pedido({ p, ahora, abierta, alAbrir, alCerrar }) {
       {abierta && (
         <div className="tarjeta__cuerpo">
           {resumenEntrega(p.cabecera) && <p className="entrega">{resumenEntrega(p.cabecera)}</p>}
-          <LineasLectura lineas={p.lineas} marcas={marcas} alMarcar={(id, v) => setMarcas((m) => ({ ...m, [id]: v }))} />
+          <LineasLectura lineas={p.lineas} marcas={marcas} alMarcar={(id, v) => setMarcas((m) => ({ ...m, [id]: v }))}
+            opcion={{
+              pisos, buscar: buscarCatalogo,
+              // Suma la opción a lo ya sacado de la línea (el servidor solo deja corregir `sacados` en la revisión)
+              agregar: async (l, n) => {
+                const previos = (l.picking?.sacados ?? []).filter((s) => s.codigo !== n.codigo).map(({ codigo, descripcion, cantidad, piso, agregada }) => ({ codigo, descripcion, cantidad, piso, ...(agregada && { agregada }) }));
+                await api.revision.marcar(p.code, l.id, { sacados: [...previos, { ...n, agregada: "revision" }] });
+                await alCerrar();
+              },
+            }}
+            fotos={{
+              agregar: async (lineaId, url) => { await api.revision.agregarFoto(p.code, lineaId, url); await alCerrar(); },
+              quitar: async (lineaId, url) => { await api.revision.quitarFoto(p.code, lineaId, url); await alCerrar(); },
+            }} />
+          <AgregarItem buscar={buscarCatalogo} pisos={pisos} exigirPiso alAgregar={async (cuerpo) => { await api.revision.agregarLinea(p.code, cuerpo); await alCerrar(); }} />
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <button type="button" className="btn btn--primario btn--ancho" disabled={!todas || enviando} onClick={cerrar}>
-            {enviando ? "Cerrando…" : todas ? "Validar y cerrar pedido" : `Faltan ${p.lineas.filter((l) => !marcas[l.id]).length} línea(s) por revisar`}
+            {enviando ? "Cerrando…" : todas ? "Validar y cerrar pedido" : `Faltan ${faltan} por revisar`}
           </button>
         </div>
       )}

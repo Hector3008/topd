@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 import { CAMPOS_REPUESTO } from "./catalogo.js";
-import { pickingSchema } from "./picking-modelo.js";
+import { pickingSchema, relacionalSchema } from "./picking-modelo.js";
+import { crearServicioRelacionales } from "./relacionales-servicio.js";
 import { configSchema } from "./config-modelo.js";
 import { crearServicioGuia } from "./guia-servicio.js";
 import { crearServicioStock, stockDeEntorno } from "./stock-servicio.js";
 import { crearLectorHoja } from "./hoja.js";
+import { crearServicioFotos, fotosDeEntorno } from "./fotos.js";
 import { crearServicioPicking, responderError } from "./picking-servicio.js";
 import { PUNTAJES_PISO } from "./picking.js";
 import { crearLector, ErrorOcr } from "./ocr.js";
@@ -34,7 +36,7 @@ export { ESTADOS_LINEA, RECONOCIMIENTOS, PUNTAJES_PISO, ErrorPicking } from "./p
  */
 const DIST_POR_DEFECTO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "client", "dist");
 
-export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO, lector = crearLector(), stock = stockDeEntorno() } = {}) {
+export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_POR_DEFECTO, lector = crearLector(), stock = stockDeEntorno(), fotos = fotosDeEntorno() } = {}) {
   if (!core?.documentos || !core?.catalogo)
     throw new Error("topd: createRouter necesita el núcleo (core) con documentos y catalogo");
 
@@ -78,12 +80,40 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   });
   router.get("/ocr", ...deCreacion, (_req, res) => res.json({ activo: lector.activo, modos: lector.modos }));
 
+  // Fotos: las tres estaciones pueden subir. `cualquiera` deja pasar a quien tenga alguno de los permisos.
+  const cualquiera = (...permisos) => async (req, res, next) => {
+    for (const permiso of permisos) {
+      const resultado = await new Promise((resolve) => {
+        const falso = { status() { return falso; }, json() { resolve("no"); return falso; } };
+        requierePermiso(permiso)(req, falso, (err) => { resolve("si"); next(err); });
+      });
+      if (resultado === "si") return;
+    }
+    res.status(403).json({ error: "permiso insuficiente" });
+  };
+  const deFotos = [autenticar(), cualquiera(ESTACIONES.creacion, ESTACIONES.produccion, ESTACIONES.revision)];
+  router.get("/fotos", ...deFotos, (_req, res) => res.json({ activo: fotosServicio.activo }));
+  // La foto (reducida por el front) pesa más que el límite general de 100 kb
+  router.post("/fotos", ...deFotos, express.json({ limit: "7mb" }), async (req, res, next) => {
+    try { res.status(201).json(await fotosServicio.subir({ usuarioId: req.auth.usuarioId, imagen: req.body?.imagen })); } catch (e) { responderError(e, res, next); }
+  });
+
   router.use(express.json());
   // Picking (pieza piloto). Las rutas completas de proformas llegan en 5.72 y el front de cuatro estaciones en 5.73.
   const Picking = core.model("Picking", pickingSchema, "picking");
   const Config = core.model("Config", configSchema, "config");
-  const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso });
+  const Relacional = core.model("Relacional", relacionalSchema, "relacionales");
+  const relacionales = crearServicioRelacionales({
+    core, Picking, Relacional,
+    registrar: async (tipo, { code, usuarioId, datos }) => {
+      try { await core.modelos.Evento.create({ usuarioId, documentoCode: code, tipoDocumento: TIPO_PROFORMA.tipo, estacion: "bandeja", tipo, origen: "servidor", ts: new Date(), recibidoTs: new Date(), datos }); }
+      catch (e) { console.error("topd: no se pudo guardar el evento", e); }
+    },
+  });
+  const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso, relacionales });
   const guia = crearServicioGuia({ core });
+  // Fotos: se suben a una carpeta de Google Drive y en la base queda solo la URL. Sin configuración quedan apagadas.
+  const fotosServicio = fotos?.subir ? fotos : crearServicioFotos({ config: fotos });
   // Sincronización de stock desde la hoja de cálculo (5.74). Sin variables de entorno queda apagada y la API lo dice.
   const stockServicio = crearServicioStock({
     core, empresaId: stock?.empresaId,
@@ -114,6 +144,28 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   });
   // Revisión (despacho): valida el pedido que armó el almacén y lo cierra.
   const deRevision = [autenticar(), requierePermiso(ESTACIONES.revision), eventos.middleware({ estacion: "revision" })];
+  // Fotos de evidencia por línea (la imagen ya está en Drive: se guarda su URL)
+  for (const [base, guardas, etapa] of [["picking", deProduccion, "almacen"], ["revision", deRevision, "revision"]]) {
+    router.post(`/${base}/:code/lineas/:lineaId/fotos`, ...guardas, async (req, res, next) => {
+      try { res.status(201).json(await picking.agregarFoto({ code: req.params.code, lineaId: req.params.lineaId, url: req.body?.url, etapa, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+    });
+    router.delete(`/${base}/:code/lineas/:lineaId/fotos`, ...guardas, async (req, res, next) => {
+      try { res.json(await picking.quitarFoto({ code: req.params.code, lineaId: req.params.lineaId, url: req.body?.url, etapa, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+    });
+  }
+  router.post("/revision/opciones", ...deRevision, opcionesDeGuia); // para sumar una opción o un ítem desde la revisión
+  // Sumar un ítem que el pedido no traía: desde el almacén (orden_salida) o desde la revisión (orden_revision)
+  const cuerpoDeLinea = (b) => ({ descripcion: b?.descripcion, cantidad: b?.cantidad, precioUnitario: b?.precioUnitario ?? null, codigo: b?.codigo ?? "", piso: b?.piso ?? null });
+  router.post("/picking/:code/lineas", ...deProduccion, async (req, res, next) => {
+    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "almacen", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+  });
+  router.post("/revision/:code/lineas", ...deRevision, async (req, res, next) => {
+    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "revision", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+  });
+  // La revisión solo corrige las opciones sacadas de una línea ({ sacados: [...] })
+  router.put("/revision/:code/lineas/:lineaId", ...deRevision, async (req, res, next) => {
+    try { res.json(await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId, etapa: "revision" })); } catch (e) { responderError(e, res, next); }
+  });
   router.get("/revision", ...deRevision, async (_req, res, next) => {
     try { res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: ["orden_revision"] }) }); } catch (e) { responderError(e, res, next); }
   });
@@ -136,6 +188,24 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   // Puntajes y tiempos del almacén (?desde=AAAA-MM-DD&hasta=AAAA-MM-DD)
   router.get("/reportes/picking", ...deBandeja, async (req, res, next) => {
     try { res.json(await picking.reportePicking({ desde: req.query.desde, hasta: req.query.hasta })); } catch (e) { responderError(e, res, next); }
+  });
+  // Relacionales: lo que salió de cada proforma cerrada (alimenta el Excel que descuenta el stock). Leer y descargar: bandeja;
+  // completar las cerradas antiguas y anular: supervisión.
+  router.get("/relacionales", ...deBandeja, async (req, res, next) => {
+    try { res.json(await relacionales.listar({ desde: req.query.desde, hasta: req.query.hasta, estado: req.query.estado || undefined, code: req.query.code || undefined })); } catch (e) { responderError(e, res, next); }
+  });
+  router.get("/relacionales/descarga.xlsx", ...deBandeja, async (req, res, next) => {
+    try {
+      const x = await relacionales.excel({ desde: req.query.desde, hasta: req.query.hasta, estado: req.query.estado === "todos" ? "" : req.query.estado || "vigente" });
+      res.set({ "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="relacionales-${x.desde}_${x.hasta}.xlsx"`, "Cache-Control": "no-store" });
+      res.send(x.buffer);
+    } catch (e) { responderError(e, res, next); }
+  });
+  router.post("/relacionales/completar", ...deSupervision, async (_req, res, next) => {
+    try { res.json(await relacionales.generarFaltantes()); } catch (e) { responderError(e, res, next); }
+  });
+  router.post("/relacionales/:code/anular", ...deSupervision, async (req, res, next) => {
+    try { res.json(await relacionales.anular({ code: req.params.code, motivo: req.body?.motivo, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
   });
   router.post("/proformas", ...deCreacion, async (req, res, next) => {
     try {

@@ -225,3 +225,22 @@ describe("vista previa del documento", () => {
     assert.equal(vistaDeProforma({ pagos: [{ monto: "50.5" }, { monto: "" }, { monto: "10" }] }).pagado, 60.5);
   });
 });
+
+describe("fotos en el front", () => {
+  it("la miniatura se deduce de la URL guardada; fuera de Drive no hay miniatura", async () => {
+    const { miniaturaDe, fotosDeLinea, formularioDeProforma, prepararProforma } = await import("../client/src/logica.js");
+    assert.equal(miniaturaDe("https://drive.google.com/uc?export=view&id=AbC_123-x", 300), "https://drive.google.com/thumbnail?id=AbC_123-x&sz=w300");
+    assert.equal(miniaturaDe("https://otro.com/a.jpg"), "");
+    assert.equal(miniaturaDe(null), "");
+    const u = (x) => `https://drive.google.com/uc?export=view&id=${x.repeat(12)}`;
+    const l = { id: "L1", fotos: [u("A")], picking: { fotos: [{ url: u("B"), etapa: "almacen" }, { url: u("C"), etapa: "revision" }] } };
+    assert.deepEqual(fotosDeLinea(l), { referencia: [u("A")], almacen: [u("B")], revision: [u("C")] });
+    assert.deepEqual(fotosDeLinea({ id: "L2" }), { referencia: [], almacen: [], revision: [] });
+    // las fotos de referencia viajan por el formulario hasta el servidor
+    const f = formularioDeProforma({ lineas: [{ id: "L1", cantidad: 1, descripcion: "X", fotos: [u("A")] }, { id: "L2", cantidad: 1, descripcion: "Y" }] });
+    assert.deepEqual(f.lineas.map((x) => x.fotos), [[u("A")], []]);
+    const r = prepararProforma({ lineas: f.lineas });
+    assert.deepEqual(r.lineas[0].fotos, [u("A")]);
+    assert.equal("fotos" in r.lineas[1], false);
+  });
+});

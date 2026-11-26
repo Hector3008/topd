@@ -105,6 +105,32 @@ describe("picking: servicio montado", () => {
     assert.ok(rutas.includes("get /estado"));
     assert.ok(rutas.includes("get /stock/estado"));
     assert.ok(rutas.includes("post /stock/sincronizar"));
+    for (const r of ["get /fotos", "post /fotos", "post /picking/:code/lineas/:lineaId/fotos", "delete /revision/:code/lineas/:lineaId/fotos", "get /relacionales", "get /relacionales/descarga.xlsx", "post /relacionales/completar", "post /relacionales/:code/anular", "post /picking/:code/lineas", "post /revision/:code/lineas", "put /revision/:code/lineas/:lineaId", "post /revision/opciones"]) assert.ok(rutas.includes(r), r);
+  });
+
+  it("las fotos las puede subir cualquiera de las tres estaciones (y nadie más), con fotos de varios MB", async () => {
+    const { default: express } = await import("express");
+    const core = createCore({ connection: mongoose.createConnection() });
+    core.autenticar = () => (req, _res, next) => { req.auth = { usuarioId: "u1", empresaId: "e1" }; next(); };
+    core.requierePermiso = (p) => (req, res, next) => ((req.headers["x-permisos"] ?? "").split(",").includes(p) ? next() : res.status(403).json({ error: "permiso insuficiente" }));
+    const subidas = [];
+    const fotos = { activo: true, async subir(a) { subidas.push(a); return { id: "X", url: "https://drive.google.com/uc?export=view&id=XXXXXXXXXXXX" }; } };
+    const servidor = express().use("/topd", createRouter({ core, fotos })).listen(0);
+    try {
+      const base = `http://127.0.0.1:${servidor.address().port}/topd`;
+      const con = (permisos, extra = {}) => ({ headers: { "content-type": "application/json", "x-permisos": permisos, "x-requested-with": "topd" }, ...extra });
+      assert.equal((await fetch(`${base}/fotos`, con("estacion:bandeja"))).status, 403);
+      assert.deepEqual(await (await fetch(`${base}/fotos`, con("estacion:revision"))).json(), { activo: true });
+      const grande = JSON.stringify({ imagen: "A".repeat(3 * 1024 * 1024) });
+      for (const p of ["estacion:creacion", "estacion:produccion", "estacion:revision"]) {
+        const r = await fetch(`${base}/fotos`, con(p, { method: "POST", body: grande }));
+        assert.equal(r.status, 201, p);
+        assert.equal((await r.json()).url, "https://drive.google.com/uc?export=view&id=XXXXXXXXXXXX");
+      }
+      assert.equal(subidas.length, 3);
+      assert.equal((await fetch(`${base}/fotos`, con("estacion:bandeja", { method: "POST", body: grande }))).status, 403);
+      assert.equal(subidas.length, 3);
+    } finally { servidor.close(); }
   });
 });
 

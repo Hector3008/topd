@@ -1,24 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, mensajeDeError, urlPlantilla } from "./api.js";
 import VistaPrevia from "./VistaPrevia.jsx";
-import { CIERRES_POR_ESTADO, MOTIVOS, SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, reducirDimensiones, sumaDelFormulario } from "./logica.js";
+import FotosLinea from "./FotosLinea.jsx";
+import { fotoReducida } from "./foto.js";
+import { CIERRES_POR_ESTADO, MOTIVOS, SECCIONES_CABECERA, detalleLinea, cabeceraVacia, formularioDeLectura, formularioDeProforma, pagoVacio, prepararProforma, sumaDelFormulario } from "./logica.js";
 
 const vacia = () => ({ cantidad: "", descripcion: "", precioUnitario: "", comentario: "", anulada: false, dudoso: false });
-
-// Reduce la foto en el teléfono (lado mayor 1600 px, JPEG): se lee igual y viaja en una fracción del peso.
-async function fotoReducida(archivo) {
-  const url = URL.createObjectURL(archivo);
-  try {
-    const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error("imagen")); i.src = url; });
-    const { ancho, alto } = reducirDimensiones(img.naturalWidth, img.naturalHeight);
-    const lienzo = document.createElement("canvas");
-    lienzo.width = ancho; lienzo.height = alto;
-    lienzo.getContext("2d").drawImage(img, 0, 0, ancho, alto);
-    return lienzo.toDataURL("image/jpeg", 0.85);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 // Estación de creación: carga manual o leyendo la foto de la proforma en papel (OCR impreso o manuscrito).
 // El OCR solo rellena este formulario: nada se crea hasta que una persona lo revisa y pulsa «Crear».
@@ -270,6 +257,9 @@ export default function NuevaProforma({ alCrear, codigo = null, alTerminar = nul
                 <label className="marca"><input type="checkbox" checked={l.anulada} onChange={(e) => cambiar(i, "anulada", e.target.checked)} /> Tachada</label>
                 <input className="coment-in" placeholder="Comentario para el almacén (opcional)" aria-label={`Comentario línea ${i + 1}`} maxLength={300} value={l.comentario} onChange={(e) => cambiar(i, "comentario", e.target.value)} />
                 {detalleLinea(l) && <span className="detalle">{detalleLinea(l)}</span>}
+                <FotosLinea titulo="Fotos de referencia" fotos={l.fotos ?? []} max={5} etiqueta={`línea ${i + 1}`}
+                  alAgregar={(u) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, fotos: [...(x.fotos ?? []), u] } : x)))}
+                  alQuitar={(u) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, fotos: (x.fotos ?? []).filter((f) => f !== u) } : x)))} />
                 {l.dudoso && <span className="chip chip--aviso">Revisar</span>}
               </li>
             ))}

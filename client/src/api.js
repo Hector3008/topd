@@ -65,6 +65,7 @@ async function subirArchivo(ruta, archivo) {
 
 const enc = encodeURIComponent;
 /** Enlace de descarga de la plantilla de Excel (un GET normal: la sesión viaja en la cookie). */
+export const urlRelacionales = (f) => `${BASE}topd/relacionales/descarga.xlsx?${new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)))}`;
 export const urlPlantilla = BASE + "topd/proformas/plantilla.xlsx";
 
 export const api = {
@@ -74,10 +75,22 @@ export const api = {
     activas: () => pedir("GET", "topd/picking"),
     marcar: (code, lineaId, cambio) => pedir("PUT", `topd/picking/${enc(code)}/lineas/${enc(lineaId)}`, cambio),
     listo: (code) => pedir("POST", `topd/picking/${enc(code)}/listo`, {}),
+    agregarLinea: (code, cuerpo) => pedir("POST", `topd/picking/${enc(code)}/lineas`, cuerpo),
+    agregarFoto: (code, lineaId, url) => pedir("POST", `topd/picking/${enc(code)}/lineas/${enc(lineaId)}/fotos`, { url }),
+    quitarFoto: (code, lineaId, url) => pedir("DELETE", `topd/picking/${enc(code)}/lineas/${enc(lineaId)}/fotos`, { url }),
+  },
+  fotos: {
+    estado: () => pedir("GET", "topd/fotos"),
+    subir: (imagen) => pedir("POST", "topd/fotos", { imagen }),
   },
   revision: {
     pendientes: () => pedir("GET", "topd/revision"),
     cerrar: (code) => pedir("POST", `topd/revision/${enc(code)}/cerrar`, {}),
+    opciones: (lineas) => pedir("POST", "topd/revision/opciones", { lineas }),
+    marcar: (code, lineaId, cambio) => pedir("PUT", `topd/revision/${enc(code)}/lineas/${enc(lineaId)}`, cambio),
+    agregarLinea: (code, cuerpo) => pedir("POST", `topd/revision/${enc(code)}/lineas`, cuerpo),
+    agregarFoto: (code, lineaId, url) => pedir("POST", `topd/revision/${enc(code)}/lineas/${enc(lineaId)}/fotos`, { url }),
+    quitarFoto: (code, lineaId, url) => pedir("DELETE", `topd/revision/${enc(code)}/lineas/${enc(lineaId)}/fotos`, { url }),
   },
   bandeja: {
     listar: (estados) => pedir("GET", `topd/bandeja${estados?.length ? `?estado=${estados.join(",")}` : ""}`),
@@ -96,6 +109,11 @@ export const api = {
   ocr: () => pedir("GET", "topd/ocr"),
   guia: { opciones: (lineas) => pedir("POST", "topd/guia/opciones", { lineas }) },
   supervision: () => pedir("GET", "topd/supervision"),
+  relacionales: {
+    listar: (f) => pedir("GET", `topd/relacionales?${new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)))}`),
+    completar: () => pedir("POST", "topd/relacionales/completar", {}),
+    anular: (code, motivo) => pedir("POST", `topd/relacionales/${encodeURIComponent(code)}/anular`, { motivo }),
+  },
   reportes: {
     picking: (desde, hasta) => pedir("GET", `topd/reportes/picking?${new URLSearchParams({ ...(desde && { desde }), ...(hasta && { hasta }) })}`),
   },

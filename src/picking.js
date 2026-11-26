@@ -33,6 +33,7 @@ export function lineasDelDocumento(doc) {
 
 const esEntero = (n) => Number.isInteger(n);
 export const MAX_SACADOS = 20;
+export const ETAPAS_AGREGADO = ["almacen", "revision"];
 
 /**
  * Aplica un cambio parcial sobre la fila actual (o una vacía) y valida el resultado completo.
@@ -93,10 +94,13 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
       if (!(esEntero(s.piso) && s.piso in puntajesPiso))
         throw new ErrorPicking("PISO_INVALIDO", `Indica el piso de ${codigo}`, { validos: Object.keys(puntajesPiso).map(Number) });
       const previo = (actual?.sacados ?? []).find((x) => x.codigo === codigo && x.piso === s.piso);
+      // `agregada`: opción que no estaba en la guía y sumó el almacén o la revisión (se conserva aunque se edite después)
+      const agregada = ETAPAS_AGREGADO.includes(s.agregada) ? s.agregada : ETAPAS_AGREGADO.includes(previo?.agregada) ? previo.agregada : undefined;
       porCodigo.set(codigo, {
         codigo, descripcion: typeof s.descripcion === "string" ? s.descripcion.trim().slice(0, 120) : "",
         cantidad: s.cantidad, piso: s.piso,
         puntaje: previo?.puntaje ?? puntajesPiso[s.piso] ?? 0, // lo ya medido no cambia si cambia la tabla
+        ...(agregada && { agregada }),
       });
     }
     fila.sacados = [...porCodigo.values()];
@@ -155,10 +159,10 @@ export function combinarAvance(lineas, filas) {
       picking: f
         ? {
             estado: f.estado, piso: f.piso, taller: f.taller, reconocido: f.reconocido,
-            cantidadEncontrada: f.cantidadEncontrada, sacados: f.sacados ?? [], nota: f.nota, puntaje: f.puntaje,
+            cantidadEncontrada: f.cantidadEncontrada, sacados: f.sacados ?? [], fotos: (f.fotos ?? []).map((x) => ({ url: x.url, etapa: x.etapa })), nota: f.nota, puntaje: f.puntaje,
             iniciadoTs: f.iniciadoTs, resueltoTs: f.resueltoTs, porId: f.porId ?? null,
           }
-        : { estado: "pendiente", piso: null, taller: false, reconocido: null, cantidadEncontrada: null, sacados: [], nota: "", puntaje: 0 },
+        : { estado: "pendiente", piso: null, taller: false, reconocido: null, cantidadEncontrada: null, sacados: [], fotos: [], nota: "", puntaje: 0 },
     };
   });
 }

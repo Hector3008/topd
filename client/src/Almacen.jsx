@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, mensajeDeError } from "./api.js";
 import { useSondeo } from "./useSondeo.js";
 import { useOpciones } from "./useOpciones.js";
-import { ESTADOS, cambioDeEstado, detalleLinea, dinero, haceCuanto, pisosDe, resumenEntrega } from "./logica.js";
+import FotosLinea from "./FotosLinea.jsx";
+import AgregarOpcion from "./AgregarOpcion.jsx";
+import AgregarItem from "./AgregarItem.jsx";
+import { ESTADOS, cambioDeEstado, detalleLinea, dinero, faltanteDeLinea, fotosDeLinea, haceCuanto, pisosDe, resumenEntrega, textoAgregada } from "./logica.js";
+
+// Búsqueda libre en todo el catálogo (para sumar una opción o un ítem que la guía no traía)
+const buscarCatalogo = async (texto) => (await api.picking.opciones([{ k: "q", descripcion: texto }])).lineas?.q ?? { opciones: [], total: 0 };
 
 
 // Almacén: las proformas en orden_salida, la más antigua primero. Cada marca se envía al instante (el servidor guarda
@@ -64,6 +70,7 @@ function Proforma({ p, pisos, ahora, abierta, alAbrir, alCambiar }) {
           <ul className="lineas">
             {p.lineas.map((l) => <Linea key={l.id} code={p.code} l={l} pisos={pisos} alCambiar={alCambiar} guia={op.porLinea[l.id]} catalogoVacio={op.total === 0} />)}
           </ul>
+          <AgregarItem buscar={buscarCatalogo} pisos={pisos} alAgregar={async (cuerpo) => { await api.picking.agregarLinea(p.code, cuerpo); await alCambiar(); }} />
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <button type="button" className="btn btn--primario btn--ancho" disabled={!completo || enviando} onClick={listo}>
             {completo ? "Listo para revisión" : `Faltan ${total - resueltas} línea(s)`}
@@ -94,17 +101,31 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
   const elegirPiso = (piso) => { setEligiendoPiso(false); return marcar(cambioDeEstado("encontrado", piso)); };
   const distinta = pk.estado === "encontrado" && pk.cantidadEncontrada !== l.cantidad;
 
-  // Opciones sacadas: { codigo, descripcion, cantidad, piso }. Se envía la lista completa en cada cambio.
-  const sacados = pk.sacados ?? [];
+  // Opciones sacadas: { codigo, descripcion, cantidad, piso }. Los cambios se ven al instante (borrador) y se envían juntos
+  // medio segundo después del último toque: así se pueden subir muchas unidades sin esperar al servidor en cada una.
+  const [borrador, setBorrador] = useState(null);
+  const temporizador = useRef(null);
+  const secuencia = useRef(0);
+  const sacados = borrador ?? pk.sacados ?? [];
   const [pisoElegido, setPisoElegido] = useState({}); // piso escogido para una opción aún sin unidades
   const sacadosDe = (codigo) => sacados.find((s) => s.codigo === codigo);
   const suma = sacados.reduce((t, s) => t + s.cantidad, 0);
+  function cambiarSacados(lista) {
+    setBorrador(lista);
+    const mia = ++secuencia.current;
+    clearTimeout(temporizador.current);
+    temporizador.current = setTimeout(async () => {
+      setError("");
+      try { await api.picking.marcar(code, l.id, { sacados: lista.map(({ codigo, descripcion, cantidad, piso, agregada }) => ({ codigo, descripcion, cantidad, piso, ...(agregada && { agregada }) })) }); }
+      catch (e) { setError(mensajeDeError(e)); }
+      finally { await alCambiar(); if (secuencia.current === mia) setBorrador(null); }
+    }, 450);
+  }
   function sacar(o, cantidad, piso) {
     const resto = sacados.filter((s) => s.codigo !== o.codigo);
     const otras = resto.reduce((t, s) => t + s.cantidad, 0);
-    const cant = Math.max(0, Math.min(cantidad, l.cantidad - otras));
-    const lista = cant > 0 ? [...resto, { codigo: o.codigo, descripcion: o.descripcion ?? "", cantidad: cant, piso }] : resto;
-    return marcar({ sacados: lista });
+    const cant = Math.max(0, Math.min(Math.trunc(cantidad) || 0, l.cantidad - otras));
+    cambiarSacados(cant > 0 ? [...resto, { codigo: o.codigo, descripcion: o.descripcion ?? "", cantidad: cant, piso }] : resto);
   }
 
   return (
@@ -116,6 +137,11 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
       </div>
       {detalleLinea(l) && <p className="detalle">{detalleLinea(l)}</p>}
       {l.comentario && <p className="comentario-linea">{l.comentario}</p>}
+      <FotosLinea titulo="Referencia de ventas" fotos={fotosDeLinea(l).referencia} />
+      <FotosLinea titulo="Fotos del almacén" fotos={fotosDeLinea(l).almacen} max={10} etiqueta={l.descripcion}
+        alAgregar={async (u) => { await api.picking.agregarFoto(code, l.id, u); await alCambiar(); }}
+        alQuitar={async (u) => { await api.picking.quitarFoto(code, l.id, u); await alCambiar(); }} />
+      {textoAgregada(l) && <p className="nota-suave"><span className="chip chip--aviso">{textoAgregada(l)}</span></p>}
       {guia && !catalogoVacio && (
         <details className="opciones-cat" open={(guia.total > 0 && guia.total <= 3) || sacados.length > 0}>
           <summary>{guia.total === 0 ? (guia.descartadas > 0 ? "Ventas descartó todas las opciones del catálogo" : "Sin coincidencias en el catálogo") : `${guia.total} ${guia.total === 1 ? "opción" : "opciones"} en el catálogo`}{guia.total > 0 && guia.descartadas > 0 ? ` (${guia.descartadas} descartada${guia.descartadas === 1 ? "" : "s"} por ventas)` : ""}{sacados.length > 0 ? ` · sacado ${suma} de ${l.cantidad}` : ""}</summary>
@@ -124,7 +150,7 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
               <li key={o.id ?? o.codigo}>
                 <b>{o.codigo}</b> · {[o.descripcion, o.familia, o.subfamilia].filter(Boolean).join(" / ")}
                 <small>{[o.ubicacion && `Ubicación: ${o.ubicacion}`, (o.stockLV !== "" || o.stockSJL !== "") && `Stock LV ${o.stockLV === "" ? "—" : o.stockLV} · SJL ${o.stockSJL === "" ? "—" : o.stockSJL}`, o.equivalentes && `Equivalentes: ${o.equivalentes}`].filter(Boolean).join(" · ")}</small>
-                <Sacar o={o} actual={sacadosDe(o.codigo)} pisos={pisos} ocupada={ocupada} max={l.cantidad - (suma - (sacadosDe(o.codigo)?.cantidad ?? 0))}
+                <Sacar o={o} actual={sacadosDe(o.codigo)} pisos={pisos} max={l.cantidad - (suma - (sacadosDe(o.codigo)?.cantidad ?? 0))}
                   piso={sacadosDe(o.codigo)?.piso ?? pisoElegido[o.codigo] ?? ""}
                   alPiso={(p) => (sacadosDe(o.codigo) ? sacar(o, sacadosDe(o.codigo).cantidad, p) : setPisoElegido((x) => ({ ...x, [o.codigo]: p })))}
                   alCantidad={(c, p) => sacar(o, c, p)} />
@@ -132,14 +158,16 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
             ))}
             {sacados.filter((s) => !guia.opciones.some((o) => o.codigo === s.codigo)).map((s) => (
               <li key={`s-${s.codigo}`} className="nota-suave">
-                Sacado: {s.cantidad} × {s.codigo} (piso {s.piso}) — ya no está entre las opciones
-                <button type="button" className="btn" disabled={ocupada} onClick={() => marcar({ sacados: sacados.filter((x) => x.codigo !== s.codigo) })}>Quitar</button>
+                {s.agregada ? "Opción agregada" : "Sacado"}: {s.cantidad} × {s.codigo} (piso {s.piso}){s.descripcion ? ` · ${s.descripcion}` : ""}{s.agregada ? "" : " — ya no está entre las opciones"}
+                <button type="button" className="btn" onClick={() => cambiarSacados(sacados.filter((x) => x.codigo !== s.codigo))}>Quitar</button>
               </li>
             ))}
             {guia.total > guia.opciones.length && <li className="nota-suave">y {guia.total - guia.opciones.length} más: afina la descripción</li>}
           </ul>
         </details>
       )}
+      {!catalogoVacio && <AgregarOpcion buscar={buscarCatalogo} pisos={pisos} max={faltanteDeLinea(l, sacados)}
+        alAgregar={async (n) => cambiarSacados([...sacados.filter((s) => s.codigo !== n.codigo), { ...n, agregada: "almacen" }])} />}
       <div className="linea__estado">
         <span className={"chip chip--" + pk.estado}>{ESTADOS[pk.estado]}{pk.estado === "encontrado" && sacados.length > 0 ? ` · ${sacados.map((x) => `${x.cantidad} × ${x.codigo} (piso ${x.piso})`).join(" + ")} · ${pk.puntaje} pts` : pk.estado === "encontrado" && pk.piso != null ? ` · piso ${pk.piso} · ${pk.puntaje} pts` : ""}</span>
         {l.modificadaTs && <span className="chip chip--aviso">Corregida por ventas</span>}
@@ -180,19 +208,21 @@ function Linea({ code, l, pisos, alCambiar, guia, catalogoVacio }) {
 
 // Cuántas unidades de esta opción se sacaron y de qué piso. El piso se escoge primero (es lo que da el puntaje);
 // después se suben o bajan las unidades. `max`: lo que todavía falta para completar la línea.
-function Sacar({ o, actual, pisos, piso, ocupada, max, alPiso, alCantidad }) {
+function Sacar({ o, actual, pisos, piso, max, alPiso, alCantidad }) {
   const cant = actual?.cantidad ?? 0;
   return (
     <div className="sacar" role="group" aria-label={`Sacar ${o.codigo}`}>
       <label>Piso
-        <select aria-label={`Piso de ${o.codigo}`} value={piso} disabled={ocupada} onChange={(e) => alPiso(Number(e.target.value))}>
+        <select aria-label={`Piso de ${o.codigo}`} value={piso} onChange={(e) => alPiso(Number(e.target.value))}>
           <option value="" disabled>—</option>
           {pisos.map((p) => <option key={p.piso} value={p.piso}>{p.piso}</option>)}
         </select>
       </label>
-      <button type="button" className="btn" aria-label={`Quitar una unidad de ${o.codigo}`} disabled={ocupada || cant < 1} onClick={() => alCantidad(cant - 1, piso)}>−</button>
-      <span className="sacar__n" aria-live="polite">{cant}</span>
-      <button type="button" className="btn" aria-label={`Sacar una unidad de ${o.codigo}`} disabled={ocupada || piso === "" || cant >= max} onClick={() => alCantidad(cant + 1, piso)}>+</button>
+      <button type="button" className="btn" aria-label={`Quitar una unidad de ${o.codigo}`} disabled={cant < 1} onClick={() => alCantidad(cant - 1, piso)}>−</button>
+      <input className="num sacar__n" type="number" inputMode="numeric" min="0" max={max} aria-label={`Unidades sacadas de ${o.codigo}`} value={cant} disabled={piso === ""}
+        onChange={(e) => alCantidad(e.target.value === "" ? 0 : Number(e.target.value), piso)} onFocus={(e) => e.target.select()} />
+      <button type="button" className="btn" aria-label={`Sacar una unidad de ${o.codigo}`} disabled={piso === "" || cant >= max} onClick={() => alCantidad(cant + 1, piso)}>+</button>
+      <button type="button" className="btn" aria-label={`Sacar todas las unidades que faltan de ${o.codigo}`} disabled={piso === "" || cant >= max} onClick={() => alCantidad(max, piso)}>Todo</button>
     </div>
   );
 }

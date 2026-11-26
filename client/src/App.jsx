@@ -8,6 +8,7 @@ import Bandeja from "./Bandeja.jsx";
 import Proformas from "./Proformas.jsx";
 import Config from "./Config.jsx";
 import Reportes from "./Reportes.jsx";
+import Relacionales from "./Relacionales.jsx";
 import Supervision from "./Supervision.jsx";
 
 // Sin enrutador (como tobt y cuenta): la vista sale del estado. Sin sesión, sin empresa o con contraseña temporal
@@ -57,6 +58,7 @@ export default function App() {
     ["revision", "Revisión", puedeRevisar(yo.permisos)],
     ["bandeja", "Bandeja", puedeBandeja(yo.permisos)],
     ["supervision", "Supervisión", puedeSupervisar(yo.permisos)],
+    ["relacionales", "Relacionales", puedeBandeja(yo.permisos)],
     ["reportes", "Reportes", puedeBandeja(yo.permisos)],
     ["config", "Configuración", puedeConfigurar(yo.permisos)],
   ].filter(([, , ok]) => ok);
@@ -88,6 +90,7 @@ export default function App() {
       {actual === "revision" && <Revision />}
       {actual === "bandeja" && <Bandeja />}
       {actual === "supervision" && <Supervision />}
+      {actual === "relacionales" && <Relacionales puedeAdministrar={puedeSupervisar(yo.permisos)} />}
       {actual === "reportes" && <Reportes />}
       {actual === "config" && <Config />}
       {actual === "proformas" && (editando

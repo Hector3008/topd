@@ -71,3 +71,14 @@ describe("picking: opciones sacadas", () => {
     assert.deepEqual(r.porPiso, [{ piso: 1, lineas: 2, puntaje: 4 }, { piso: 3, lineas: 1, puntaje: 3 }]); // (1 + 2 extra) + 1 | 3
   });
 });
+
+describe("revisión opción por opción", () => {
+  it("una línea sacada de dos opciones lleva dos casillas; sin opciones, una sola por la línea", async () => {
+    const { partesDeRevision } = await import("../client/src/logica.js");
+    const l = { id: "L1", cantidad: 5, picking: { estado: "encontrado", sacados: [{ codigo: "ZM-1", cantidad: 3, piso: 1, descripcion: "Navara" }, { codigo: "19812", cantidad: 2, piso: 3 }] } };
+    assert.deepEqual(partesDeRevision(l).map((x) => [x.clave, x.texto]), [["L1:ZM-1", "3 × ZM-1 (piso 1)"], ["L1:19812", "2 × 19812 (piso 3)"]]);
+    assert.equal(partesDeRevision(l)[0].detalle, "Navara");
+    assert.deepEqual(partesDeRevision({ id: "L2", picking: { estado: "encontrado", sacados: [] } }).map((x) => x.clave), ["L2"]);
+    assert.deepEqual(partesDeRevision({ id: "L3", picking: { estado: "no_encontrado" } }).map((x) => x.clave), ["L3"]);
+  });
+});

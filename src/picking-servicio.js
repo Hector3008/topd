@@ -1,10 +1,12 @@
 import { ErrorDocumento } from "core";
 import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
+import { limpiarFotos, urlDeFotoValida, MAX_FOTOS_EVIDENCIA } from "./fotos.js";
 import { armarReporte, armarSupervisor, diaDe, rangoDeDias } from "./reportes.js";
 import { configPorDefecto, limpiarConfig, puntajesDe, copiaDeEmisor } from "./config.js";
 import {
   ErrorPicking, PUNTAJES_PISO, lineasDelDocumento, aplicarMarca, combinarAvance, resumenAvance,
 } from "./picking.js";
+const ESTADO_REVISION = "orden_revision";
 
 const ESTADO_PICKING = "orden_salida"; // la proforma que el almacén tiene delante
 // Estados en que la estación de creación puede corregir la proforma. En orden_revision el almacén ya terminó:
@@ -15,7 +17,7 @@ export const ESTADOS_EDITABLES = ["borrador", "cotizacion", "orden_salida"];
  * Servicio de picking. Todas las operaciones corren dentro de la empresa activa (conEmpresa),
  * que deja el middleware de permisos del núcleo.
  */
-export function crearServicioPicking({ core, Picking, Config = null, puntajesPiso = PUNTAJES_PISO }) {
+export function crearServicioPicking({ core, Picking, Config = null, puntajesPiso = PUNTAJES_PISO, relacionales = null }) {
   const { documentos, modelos } = core;
   // Estados a los que se puede mandar una proforma desde la estación de creación (el motor valida el permiso y el motivo)
   const DESTINOS = ["cotizacion", "orden_salida", "descartado", "rechazada", "vencida"];
@@ -123,27 +125,41 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       if (doc.estado !== "orden_revision")
         throw new ErrorPicking("ESTADO_NO_REVISION", `La proforma ${code} está en '${doc.estado}': no está para revisar`);
       const nuevo = await documentos.transicionar({ code, a: "cerrada", usuarioId, permisos, esperaVersion: doc.version });
-      return { code, estado: nuevo.estado };
+      // Los relacionales (lo que descuenta el stock) no deben deshacer el cierre si fallan: «Completar cerradas» los repone
+      let relacionalesFilas = null;
+      if (relacionales) {
+        try { relacionalesFilas = (await relacionales.generar({ code })).filas; }
+        catch (e) { console.error("topd: no se pudieron guardar los relacionales de", code, e); }
+      }
+      return { code, estado: nuevo.estado, ...(relacionales && { relacionales: relacionalesFilas }) };
     },
 
-    /** Marca una línea (parcial: solo cambia lo que llega). */
-    async marcar({ code, lineaId, cambio, usuarioId }) {
+    /**
+     * Marca una línea (parcial: solo cambia lo que llega). Con `etapa: "revision"` (la proforma está en orden_revision) quien
+     * revisa solo puede corregir lo sacado (`sacados`), por ejemplo sumar una opción que el almacén no usó.
+     */
+    async marcar({ code, lineaId, cambio, usuarioId, etapa = "almacen" }) {
       const doc = await cargarProforma(code);
-      if (doc.estado !== ESTADO_PICKING)
-        throw new ErrorPicking("ESTADO_NO_PICKING", `La proforma ${code} está en '${doc.estado}': no se está buscando`);
+      const enRevision = etapa === "revision";
+      if (doc.estado !== (enRevision ? ESTADO_REVISION : ESTADO_PICKING))
+        throw new ErrorPicking(enRevision ? "ESTADO_NO_REVISION" : "ESTADO_NO_PICKING", `La proforma ${code} está en '${doc.estado}': ${enRevision ? "no está para revisar" : "no se está buscando"}`);
+      if (enRevision && Object.keys(cambio ?? {}).some((k) => k !== "sacados"))
+        throw new ErrorPicking("CAMBIO_NO_PERMITIDO", "En la revisión solo se corrigen las opciones sacadas");
       const linea = lineasDelDocumento(doc).find((l) => l.id === lineaId);
       if (!linea) throw new ErrorPicking("LINEA_NO_ENCONTRADA", `La proforma ${code} no tiene la línea ${lineaId} (o está anulada)`);
 
       const actual = await Picking.findOne({ code, lineaId }).lean();
       const cfg = await servicio.config();
       const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), extras: cfg.extras });
+      // La revisión no cambia cuándo ni quién resolvió la línea en el almacén (los reportes cuentan esa marca)
+      if (enRevision && actual) Object.assign(fila, { resueltoTs: actual.resueltoTs ?? fila.resueltoTs, iniciadoTs: actual.iniciadoTs ?? fila.iniciadoTs });
       const guardada = await Picking.findOneAndUpdate(
         { code, lineaId },
-        { $set: { ...fila, porId: usuarioId } },
+        { $set: { ...fila, ...(!(enRevision && actual?.porId) && { porId: usuarioId }) } },
         { upsert: true, returnDocument: "after", lean: true },
       );
-      await registrarEvento("picking.marca", {
-        code, usuarioId,
+      await registrarEvento(enRevision ? "picking.marca_revision" : "picking.marca", {
+        code, usuarioId, estacion: enRevision ? "revision" : "produccion",
         datos: {
           lineaId, de: actual?.estado ?? "pendiente", a: fila.estado, piso: fila.piso, taller: fila.taller,
           reconocido: fila.reconocido, cantidadEncontrada: fila.cantidadEncontrada, puntaje: fila.puntaje,
@@ -152,6 +168,41 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
         },
       });
       return guardada;
+    },
+
+    /**
+     * El almacén (proforma en orden_salida) o la revisión (en orden_revision) suma un ítem que el pedido no traía.
+     * Con `codigo` es un producto del catálogo y queda sacado de una vez en el `piso` indicado; sin él es un ítem libre:
+     * en el almacén queda por buscar como cualquier línea y en la revisión hay que decir el piso (ya está en la mano).
+     * La línea guarda quién y cuándo la agregó (`agregada`) para que ventas lo vea.
+     */
+    async agregarLinea({ code, etapa, descripcion, cantidad, precioUnitario = null, codigo = "", piso = null, usuarioId }) {
+      if (etapa !== "almacen" && etapa !== "revision") throw new ErrorPicking("ETAPA_INVALIDA", "La etapa debe ser almacen o revision");
+      const doc = await cargarProforma(code);
+      const esperado = etapa === "revision" ? ESTADO_REVISION : ESTADO_PICKING;
+      if (doc.estado !== esperado) throw new ErrorPicking(etapa === "revision" ? "ESTADO_NO_REVISION" : "ESTADO_NO_PICKING", `La proforma ${code} está en '${doc.estado}': ya no se agregan ítems desde ${etapa === "revision" ? "la revisión" : "el almacén"}`);
+      const cod = typeof codigo === "string" ? codigo.trim().slice(0, 40) : "";
+      const d = doc.payload?.doc ?? {};
+      const anteriores = (d.lineas ?? []).map((l, i) => ({ ...l, id: l.id ?? `L${i + 1}` }));
+      const ahora = new Date();
+      const todas = limpiarLineas([...anteriores, { descripcion, cantidad, precioUnitario, ...(cod && { codMax: cod }) }], anteriores, ahora);
+      const nueva = { ...todas[todas.length - 1] };
+      delete nueva.modificadaTs; // no es una corrección de ventas
+      nueva.agregada = { etapa, porId: usuarioId ?? null, ts: ahora };
+      todas[todas.length - 1] = nueva;
+      if ((cod || etapa === "revision") && !(Number.isInteger(piso) && piso !== null))
+        throw new ErrorPicking("PISO_REQUERIDO", "Indica el piso de donde se sacó el ítem");
+      const cfg = await servicio.config();
+      const cambio = cod ? { sacados: [{ codigo: cod, descripcion: String(descripcion ?? "").trim().slice(0, 120), cantidad: nueva.cantidad, piso, agregada: etapa }] }
+        : etapa === "revision" ? { estado: "encontrado", piso, cantidadEncontrada: nueva.cantidad } : null;
+      const fila = cambio ? aplicarMarca(null, cambio, { linea: nueva, puntajesPiso: puntajesDe(cfg), extras: cfg.extras, ahora }) : null; // valida antes de guardar nada
+      const nuevo = await documentos.nuevaVersion({ code, usuarioId, esperaVersion: doc.version, doc: { ...d, lineas: todas } });
+      if (fila) await Picking.findOneAndUpdate({ code, lineaId: nueva.id }, { $set: { ...fila, porId: usuarioId } }, { upsert: true, returnDocument: "after", lean: true });
+      await registrarEvento("picking.linea_agregada", {
+        code, usuarioId, estacion: etapa === "revision" ? "revision" : "produccion",
+        datos: { lineaId: nueva.id, etapa, cantidad: nueva.cantidad, codigo: cod || null, piso, version: nuevo.version },
+      });
+      return { code, lineaId: nueva.id, version: nuevo.version };
     },
 
     /** «Ya junté el pedido»: pasa la proforma a orden_revision si todas las líneas están resueltas. */
@@ -167,6 +218,41 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
         code, a: "orden_revision", usuarioId, permisos, esperaVersion: doc.version,
       });
       return { code, estado: nuevo.estado, avance };
+    },
+
+    /**
+     * Foto de evidencia de una línea, de almacén (proforma en orden_salida) o de revisión (en orden_revision).
+     * La imagen ya está en Drive: aquí solo se guarda su URL en la fila de picking de la línea.
+     */
+    async agregarFoto({ code, lineaId, url, etapa, usuarioId }) {
+      const doc = await cargarProforma(code);
+      const [estadoEsperado, nombreEtapa] = etapa === "revision" ? ["orden_revision", "revisión"] : ["orden_salida", "almacén"];
+      if (etapa !== "revision" && etapa !== "almacen") throw new ErrorPicking("ETAPA_INVALIDA", "La etapa debe ser almacen o revision");
+      if (doc.estado !== estadoEsperado) throw new ErrorPicking("ESTADO_NO_FOTOS", `La proforma ${code} está en '${doc.estado}': ya no se agregan fotos de ${nombreEtapa}`);
+      if (!lineasDelDocumento(doc).some((l) => l.id === lineaId)) throw new ErrorPicking("LINEA_NO_ENCONTRADA", `La proforma ${code} no tiene la línea ${lineaId}`);
+      if (!urlDeFotoValida(url)) throw new ErrorPicking("FOTO_INVALIDA", "La URL de la foto no es válida");
+      const actual = await Picking.findOne({ code, lineaId }).lean();
+      const propias = (actual?.fotos ?? []).filter((f) => f.etapa === etapa);
+      if (propias.length >= MAX_FOTOS_EVIDENCIA) throw new ErrorPicking("DEMASIADAS_FOTOS", `Máximo ${MAX_FOTOS_EVIDENCIA} fotos por línea`);
+      if ((actual?.fotos ?? []).some((f) => f.url === url)) return actual;
+      const guardada = await Picking.findOneAndUpdate(
+        { code, lineaId },
+        { $push: { fotos: { url, etapa, ts: new Date(), porId: usuarioId } } },
+        { upsert: true, returnDocument: "after", lean: true },
+      );
+      await registrarEvento("picking.foto", { code, usuarioId, estacion: etapa === "revision" ? "revision" : "produccion", datos: { lineaId, etapa } });
+      return guardada;
+    },
+
+    /** Quita una foto de evidencia de la etapa (el archivo queda en Drive; solo se borra el enlace). */
+    async quitarFoto({ code, lineaId, url, etapa, usuarioId }) {
+      const doc = await cargarProforma(code);
+      if (etapa !== "revision" && etapa !== "almacen") throw new ErrorPicking("ETAPA_INVALIDA", "La etapa debe ser almacen o revision");
+      if (doc.estado !== (etapa === "revision" ? "orden_revision" : "orden_salida"))
+        throw new ErrorPicking("ESTADO_NO_FOTOS", `La proforma ${code} está en '${doc.estado}': ya no se cambian fotos de esta etapa`);
+      const guardada = await Picking.findOneAndUpdate({ code, lineaId }, { $pull: { fotos: { url, etapa } } }, { returnDocument: "after", lean: true });
+      await registrarEvento("picking.foto_quitada", { code, usuarioId, estacion: etapa === "revision" ? "revision" : "produccion", datos: { lineaId, etapa } });
+      return guardada ?? null;
     },
 
     /** Una proforma completa, tal como se cargó (con líneas tachadas), para volver a abrirla en el formulario. */
@@ -309,15 +395,17 @@ export function limpiarLineas(lineas, existentes = null, ahora = new Date(), { p
     // Opciones del catálogo que ventas marcó como no compatibles: no llegan a la guía del almacén
     const descartadas = [...new Set((Array.isArray(l?.descartadas) ? l.descartadas : [])
       .filter((c) => typeof c === "string").map((c) => c.trim().slice(0, 40)).filter(Boolean))].slice(0, 50);
+    const fotos = limpiarFotos(l?.fotos); // fotos de referencia que adjunta ventas (URLs de Drive)
     const base = {
-      id, cantidad, descripcion, precioUnitario, ...catalogo, ...(descartadas.length && { descartadas }),
+      id, cantidad, descripcion, precioUnitario, ...catalogo, ...(descartadas.length && { descartadas }), ...(fotos.length && { fotos }),
       importe: precioUnitario == null ? null : Math.round(cantidad * precioUnitario * 100) / 100,
-      comentario, origen: previa?.origen ?? "libre", anulada,
+      comentario, origen: previa?.origen ?? "libre", anulada, ...(previa?.agregada && { agregada: previa.agregada }),
     };
     if (!previa) return existentes ? { ...base, modificadaTs: ahora } : base;
     const cambio = ["modelo", "codMax", "proveedor", "familia"].some((k) => (previa[k] ?? "") !== (catalogo[k] ?? "")) || previa.cantidad !== cantidad || previa.descripcion !== descripcion || (previa.precioUnitario ?? null) !== precioUnitario
       || (previa.comentario ?? "") !== comentario || Boolean(previa.anulada) !== anulada
-      || JSON.stringify([...(previa.descartadas ?? [])].sort()) !== JSON.stringify([...descartadas].sort());
+      || JSON.stringify([...(previa.descartadas ?? [])].sort()) !== JSON.stringify([...descartadas].sort())
+      || JSON.stringify(previa.fotos ?? []) !== JSON.stringify(fotos);
     // Si no cambió nada se conserva la marca anterior (si la tenía)
     return cambio ? { ...base, modificadaTs: ahora } : { ...base, ...(previa.modificadaTs && { modificadaTs: previa.modificadaTs }) };
   });
@@ -353,7 +441,9 @@ export function limpiarPagos(pagos) {
 // Traduce los errores conocidos a respuestas HTTP
 export function responderError(e, res, next) {
   if (e instanceof ErrorPicking) {
-    const http = e.codigo.endsWith("NO_ENCONTRADA") ? 404 : e.codigo === "PICKING_INCOMPLETO" || e.codigo === "ESTADO_NO_PICKING" || e.codigo === "ESTADO_NO_REVISION" || e.codigo === "ESTADO_NO_EDITABLE" ? 409 : 400;
+    const http = (e.codigo.endsWith("NO_ENCONTRADA") || e.codigo === "RELACIONALES_NO_ENCONTRADOS") ? 404
+      : ["PICKING_INCOMPLETO", "CAMBIO_NO_PERMITIDO", "ESTADO_NO_PICKING", "ESTADO_NO_REVISION", "ESTADO_NO_CERRADA", "ESTADO_NO_EDITABLE", "ESTADO_NO_FOTOS"].includes(e.codigo) ? 409
+      : e.codigo === "FOTO_GRANDE" ? 413 : e.codigo === "LIMITE_FOTOS" ? 429 : e.codigo === "FOTOS_NO_CONFIGURADAS" ? 503 : e.codigo.startsWith("GOOGLE_") ? 502 : 400;
     return res.status(http).json({ error: e.message, codigo: e.codigo, detalle: e.detalle });
   }
   if (e instanceof ErrorDocumento) {

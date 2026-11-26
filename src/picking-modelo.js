@@ -15,7 +15,9 @@ export const pickingSchema = new mongoose.Schema(
     reconocido: { type: String, enum: [...RECONOCIMIENTOS, null], default: null },
     cantidadEncontrada: { type: Number, default: null },
     // Opciones del catálogo que se sacaron (una línea puede salir de varias): { codigo, descripcion, cantidad, piso, puntaje }
-    sacados: { type: [new mongoose.Schema({ codigo: String, descripcion: { type: String, default: "" }, cantidad: Number, piso: Number, puntaje: { type: Number, default: 0 } }, { _id: false })], default: [] },
+    // Fotos de evidencia (URLs de Drive): del almacén y de la revisión
+    fotos: { type: [new mongoose.Schema({ url: String, etapa: String, ts: Date, porId: mongoose.Schema.Types.ObjectId }, { _id: false })], default: [] },
+    sacados: { type: [new mongoose.Schema({ codigo: String, descripcion: { type: String, default: "" }, cantidad: Number, piso: Number, puntaje: { type: Number, default: 0 }, agregada: { type: String, default: undefined } }, { _id: false })], default: [] },
     nota: { type: String, default: "" },
     puntaje: { type: Number, default: 0 },
     iniciadoTs: { type: Date, default: null },
@@ -26,3 +28,28 @@ export const pickingSchema = new mongoose.Schema(
 );
 pickingSchema.plugin(tenancyPlugin);
 pickingSchema.index({ empresaId: 1, code: 1, lineaId: 1 }, { unique: true });
+
+// Una fila por proforma cerrada + línea + opción sacada: lo que descuenta el stock y alimenta ventas y anulados
+export const relacionalSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true },
+    lineaId: { type: String, required: true },
+    codigo: { type: String, default: "" }, // código mostrado de la opción (CODIGO_FORMATEADO)
+    fecha: { type: String, required: true }, // AAAA-MM-DD, día del cierre en la hora de la empresa
+    cantidad: { type: Number, required: true },
+    importeUnitario: { type: Number, default: 0 },
+    importeTotal: { type: Number, default: 0 },
+    descripcion: { type: String, default: "" },
+    cliente: { type: String, default: "" },
+    vendedor: { type: String, default: "" },
+    sinCodigo: { type: Boolean, default: false },
+    estado: { type: String, enum: ["vigente", "anulado"], default: "vigente" },
+    anuladoTs: { type: Date, default: null },
+    anuladoMotivo: { type: String, default: "" },
+    anuladoPorId: { type: ObjectId, default: null },
+  },
+  { timestamps: true, minimize: false },
+);
+relacionalSchema.plugin(tenancyPlugin);
+relacionalSchema.index({ empresaId: 1, code: 1, lineaId: 1, codigo: 1 }, { unique: true });
+relacionalSchema.index({ empresaId: 1, fecha: 1, estado: 1 });
