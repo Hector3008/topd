@@ -4,7 +4,7 @@ import { crearServicioPicking, limpiarCabecera, limpiarPagos } from "../src/pick
 import { ErrorPicking } from "../src/picking.js";
 
 // Núcleo y colección falsos en memoria: prueban el flujo completo almacén → revisión sin base de datos.
-function entorno() {
+function entorno(extra = {}) {
   const docs = new Map();
   const filas = [];
   const eventos = [];
@@ -50,7 +50,7 @@ function entorno() {
       return x;
     },
   };
-  const svc = crearServicioPicking({ core, Picking, Config });
+  const svc = crearServicioPicking({ core, Picking, Config, ...extra });
   // Casi todas las pruebas solo necesitan el código; la forma completa { code, estado } es svc.crearOrdenCompleta
   const crearOrdenCompleta = svc.crearOrden;
   svc.crearOrdenCompleta = crearOrdenCompleta;
@@ -511,5 +511,59 @@ describe("ítems y opciones que suman el almacén y la revisión", () => {
     await svc.editar({ code, lineas: d.payload.doc.lineas.map((l) => ({ ...l, comentario: "ok" })), esperaVersion: d.version, usuarioId: "u1" });
     assert.equal(docs.get(code).payload.doc.lineas[1].agregada.etapa, "almacen");
     assert.equal(filas.find((x) => x.lineaId === "L2").estado, "encontrado");
+  });
+});
+
+describe("foto del despacho del pedido completo", () => {
+  // Colección falsa de `despachos` (una fila por proforma con sus fotos)
+  function despachos() {
+    const rows = [];
+    const cur = (xs) => ({ lean: async () => xs });
+    return {
+      rows,
+      find: (f) => cur(rows.filter((r) => f.code.$in.includes(r.code))),
+      findOne: (f) => cur(rows.find((r) => r.code === f.code) ?? null),
+      async findOneAndUpdate(f, u) {
+        let r = rows.find((x) => x.code === f.code);
+        if (!r) rows.push((r = { code: f.code, fotos: [] }));
+        if (u.$push) r.fotos.push(u.$push.fotos);
+        if (u.$pull) r.fotos = r.fotos.filter((x) => x.url !== u.$pull.fotos.url);
+        return r;
+      },
+    };
+  }
+  const U = (c) => `https://drive.google.com/uc?export=view&id=${c.repeat(12)}`;
+  const montar = async () => {
+    const Despacho = despachos();
+    const e = entorno({ Despacho });
+    const svc = e.svc;
+    const code = await svc.crearOrden({ lineas: [{ cantidad: 1, descripcion: "x", precioUnitario: 1 }], usuarioId: "u1", permisos: [] });
+    return { ...e, svc, Despacho, code };
+  };
+
+  it("se agrega al revisar, se ve en la lista y no se duplica", async () => {
+    const { svc, code } = await montar();
+    await falla(svc.agregarFotoDespacho({ code, url: U("A"), usuarioId: "u3" }), "ESTADO_NO_FOTOS"); // aún en el almacén
+    await svc.marcar({ code, lineaId: "L1", cambio: { estado: "no_encontrado" }, usuarioId: "u2" });
+    await svc.listoParaRevision({ code, usuarioId: "u2", permisos: [] });
+    await falla(svc.agregarFotoDespacho({ code, url: "http://x/a.jpg", usuarioId: "u3" }), "FOTO_INVALIDA");
+    assert.deepEqual((await svc.agregarFotoDespacho({ code, url: U("A"), usuarioId: "u3" })).fotos, [U("A")]);
+    await svc.agregarFotoDespacho({ code, url: U("A"), usuarioId: "u3" });
+    await svc.agregarFotoDespacho({ code, url: U("B"), usuarioId: "u3" });
+    const [p] = await svc.listar({ estados: ["orden_revision"] });
+    assert.deepEqual(p.fotosDespacho, [U("A"), U("B")]);
+    assert.deepEqual((await svc.quitarFotoDespacho({ code, url: U("A"), usuarioId: "u3" })).fotos, [U("B")]);
+  });
+
+  it("tope de fotos, y ya no se cambian después de cerrar", async () => {
+    const { svc, code } = await montar();
+    await svc.marcar({ code, lineaId: "L1", cambio: { estado: "no_encontrado" }, usuarioId: "u2" });
+    await svc.listoParaRevision({ code, usuarioId: "u2", permisos: [] });
+    for (const c of "ABCDEFGHIJ") await svc.agregarFotoDespacho({ code, url: U(c), usuarioId: "u3" });
+    await falla(svc.agregarFotoDespacho({ code, url: U("K"), usuarioId: "u3" }), "DEMASIADAS_FOTOS");
+    await svc.cerrar({ code, usuarioId: "u3", permisos: [] });
+    await falla(svc.quitarFotoDespacho({ code, url: U("A"), usuarioId: "u3" }), "ESTADO_NO_FOTOS");
+    const [p] = await svc.listar({ estados: ["cerrada"] });
+    assert.equal(p.fotosDespacho.length, 10); // la bandeja las sigue viendo
   });
 });

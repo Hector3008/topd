@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, mensajeDeError } from "./api.js";
 import { haceCuanto, partesDeRevision, pisosDe, requiereAtencion, resumenEntrega } from "./logica.js";
 import AgregarItem from "./AgregarItem.jsx";
+import FotosLinea from "./FotosLinea.jsx";
 
 const buscarCatalogo = async (texto) => (await api.revision.opciones([{ k: "q", descripcion: texto }])).lineas?.q ?? { opciones: [], total: 0 };
 import { useSondeo } from "./useSondeo.js";
@@ -79,6 +80,9 @@ function Pedido({ p, pisos, ahora, abierta, alAbrir, alCerrar }) {
               agregar: async (lineaId, url) => { await api.revision.agregarFoto(p.code, lineaId, url); await alCerrar(); },
               quitar: async (lineaId, url) => { await api.revision.quitarFoto(p.code, lineaId, url); await alCerrar(); },
             }} />
+          <FotosLinea titulo="📦 Foto del despacho (pedido completo)" max={10} fotos={p.fotosDespacho ?? []}
+            alAgregar={async (url) => { await api.revision.agregarFotoDespacho(p.code, url); await alCerrar(); }}
+            alQuitar={async (url) => { await api.revision.quitarFotoDespacho(p.code, url); await alCerrar(); }} />
           <AgregarItem buscar={buscarCatalogo} pisos={pisos} exigirPiso alAgregar={async (cuerpo) => { await api.revision.agregarLinea(p.code, cuerpo); await alCerrar(); }} />
           {error && <p className="aviso-error" role="alert">{error}</p>}
           <button type="button" className="btn btn--primario btn--ancho" disabled={!todas || enviando} onClick={cerrar}>

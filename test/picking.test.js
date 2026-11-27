@@ -105,7 +105,7 @@ describe("picking: servicio montado", () => {
     assert.ok(rutas.includes("get /estado"));
     assert.ok(rutas.includes("get /stock/estado"));
     assert.ok(rutas.includes("post /stock/sincronizar"));
-    for (const r of ["get /fotos", "post /fotos", "post /picking/:code/lineas/:lineaId/fotos", "delete /revision/:code/lineas/:lineaId/fotos", "get /relacionales", "get /relacionales/descarga.xlsx", "post /relacionales/completar", "post /relacionales/:code/anular", "post /picking/:code/lineas", "post /revision/:code/lineas", "put /revision/:code/lineas/:lineaId", "post /revision/opciones"]) assert.ok(rutas.includes(r), r);
+    for (const r of ["get /fotos", "post /fotos", "post /picking/:code/lineas/:lineaId/fotos", "delete /revision/:code/lineas/:lineaId/fotos", "get /relacionales", "get /relacionales/descarga.xlsx", "post /relacionales/completar", "post /relacionales/:code/anular", "post /picking/:code/lineas", "post /revision/:code/lineas", "put /revision/:code/lineas/:lineaId", "post /revision/opciones", "post /revision/:code/despacho/fotos", "delete /revision/:code/despacho/fotos"]) assert.ok(rutas.includes(r), r);
   });
 
   it("las fotos las puede subir cualquiera de las tres estaciones (y nadie más), con fotos de varios MB", async () => {

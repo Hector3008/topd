@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import { COMPROBANTES, ESTADOS_PROFORMA, FORMAS_PAGO, coincideBusqueda, dinero, haceCuanto, resumenEntrega, textoOpcion } from "./logica.js";
 import { useSondeo } from "./useSondeo.js";
 import LineasLectura from "./LineasLectura.jsx";
+import FotosLinea from "./FotosLinea.jsx";
 
 const FILTROS = [
   ["todas", "Todas", null],
@@ -67,6 +68,7 @@ export default function Bandeja() {
                       </p>
                     )}
                     <LineasLectura lineas={p.lineas} />
+                    <FotosLinea titulo="📦 Fotos del despacho" fotos={p.fotosDespacho ?? []} />
                   </div>
                 )}
               </li>

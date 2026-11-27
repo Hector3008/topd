@@ -3,6 +3,7 @@ import { ErrorPicking } from "./picking.js";
 import { crearDrive, urlDeArchivo } from "./drive.js";
 
 export const MAX_FOTOS_LINEA = 5;       // fotos que ventas adjunta a una línea (referencia: producto o muestra del cliente)
+export const MAX_FOTOS_DESPACHO = 10;
 export const MAX_FOTOS_EVIDENCIA = 10;  // fotos del almacén o de la revisión por línea
 export const MAX_BYTES_FOTO = 4 * 1024 * 1024;
 const POR_HORA = 150;                   // subidas por persona y hora

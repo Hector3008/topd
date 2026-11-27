@@ -1,6 +1,6 @@
 import { ErrorDocumento } from "core";
 import { TIPO_PROFORMA, ESTACIONES } from "./tipos.js";
-import { limpiarFotos, urlDeFotoValida, MAX_FOTOS_EVIDENCIA } from "./fotos.js";
+import { limpiarFotos, urlDeFotoValida, MAX_FOTOS_EVIDENCIA, MAX_FOTOS_DESPACHO } from "./fotos.js";
 import { armarReporte, armarSupervisor, diaDe, rangoDeDias } from "./reportes.js";
 import { configPorDefecto, limpiarConfig, puntajesDe, copiaDeEmisor } from "./config.js";
 import {
@@ -17,7 +17,7 @@ export const ESTADOS_EDITABLES = ["borrador", "cotizacion", "orden_salida"];
  * Servicio de picking. Todas las operaciones corren dentro de la empresa activa (conEmpresa),
  * que deja el middleware de permisos del núcleo.
  */
-export function crearServicioPicking({ core, Picking, Config = null, puntajesPiso = PUNTAJES_PISO, relacionales = null }) {
+export function crearServicioPicking({ core, Picking, Config = null, puntajesPiso = PUNTAJES_PISO, relacionales = null, Despacho = null }) {
   const { documentos, modelos } = core;
   // Estados a los que se puede mandar una proforma desde la estación de creación (el motor valida el permiso y el motivo)
   const DESTINOS = ["cotizacion", "orden_salida", "descartado", "rechazada", "vencida"];
@@ -104,12 +104,14 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       const docs = await documentos.listar({ tipo: TIPO_PROFORMA.tipo, estado: estados, limite });
       if (!docs.length) return [];
       const filas = await Picking.find({ code: { $in: docs.map((d) => d.code) } }).lean();
+      const despachos = Despacho ? await Despacho.find({ code: { $in: docs.map((d) => d.code) } }).lean() : [];
       return (recientes ? docs : docs.reverse()).map((d) => {
         const lineas = combinarAvance(lineasDelDocumento(d), filas.filter((f) => f.code === d.code));
         return {
           code: d.code, estado: d.estado, version: d.version, editable: ESTADOS_EDITABLES.includes(d.estado), creadaTs: d.createdAt, actualizadaTs: d.updatedAt,
           cabecera: d.payload?.doc?.cabecera ?? {}, origenCarga: d.payload?.doc?.origenCarga ?? "manual", emisor: d.payload?.doc?.emisor ?? null,
           lineas, avance: resumenAvance(lineas),
+          fotosDespacho: (despachos.find((x) => x.code === d.code)?.fotos ?? []).map((f) => f.url),
           // Los pagos solo salen donde hace falta (bandeja): el almacén no los necesita
           ...(conPagos && { pagos: d.payload?.doc?.pagos ?? [] }),
         };
@@ -253,6 +255,33 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       const guardada = await Picking.findOneAndUpdate({ code, lineaId }, { $pull: { fotos: { url, etapa } } }, { returnDocument: "after", lean: true });
       await registrarEvento("picking.foto_quitada", { code, usuarioId, estacion: etapa === "revision" ? "revision" : "produccion", datos: { lineaId, etapa } });
       return guardada ?? null;
+    },
+
+    /**
+     * Foto del despacho: del pedido completo, la sube quien revisa mientras la proforma está en orden_revision (la imagen ya está
+     * en Drive; aquí solo se guarda la URL). Va junto al pedido y se ve en la bandeja.
+     */
+    async agregarFotoDespacho({ code, url, usuarioId }) {
+      const doc = await cargarProforma(code);
+      if (!Despacho) throw new ErrorPicking("FOTOS_NO_CONFIGURADAS", "Las fotos del despacho no están disponibles");
+      if (doc.estado !== ESTADO_REVISION) throw new ErrorPicking("ESTADO_NO_FOTOS", `La proforma ${code} está en '${doc.estado}': la foto del despacho se agrega al revisar`);
+      if (!urlDeFotoValida(url)) throw new ErrorPicking("FOTO_INVALIDA", "La URL de la foto no es válida");
+      const actual = await Despacho.findOne({ code }).lean();
+      if ((actual?.fotos ?? []).some((f) => f.url === url)) return { code, fotos: actual.fotos.map((f) => f.url) };
+      if ((actual?.fotos ?? []).length >= MAX_FOTOS_DESPACHO) throw new ErrorPicking("DEMASIADAS_FOTOS", `Máximo ${MAX_FOTOS_DESPACHO} fotos del despacho`);
+      const g = await Despacho.findOneAndUpdate({ code }, { $push: { fotos: { url, ts: new Date(), porId: usuarioId } } }, { upsert: true, returnDocument: "after", lean: true });
+      await registrarEvento("picking.foto_despacho", { code, usuarioId, estacion: "revision", datos: { fotos: g.fotos.length } });
+      return { code, fotos: g.fotos.map((f) => f.url) };
+    },
+
+    /** Quita una foto del despacho (el archivo queda en Drive; solo se borra el enlace). */
+    async quitarFotoDespacho({ code, url, usuarioId }) {
+      const doc = await cargarProforma(code);
+      if (!Despacho) throw new ErrorPicking("FOTOS_NO_CONFIGURADAS", "Las fotos del despacho no están disponibles");
+      if (doc.estado !== ESTADO_REVISION) throw new ErrorPicking("ESTADO_NO_FOTOS", `La proforma ${code} está en '${doc.estado}': ya no se cambian las fotos del despacho`);
+      const g = await Despacho.findOneAndUpdate({ code }, { $pull: { fotos: { url } } }, { returnDocument: "after", lean: true });
+      await registrarEvento("picking.foto_despacho_quitada", { code, usuarioId, estacion: "revision", datos: { fotos: g?.fotos?.length ?? 0 } });
+      return { code, fotos: (g?.fotos ?? []).map((f) => f.url) };
     },
 
     /** Una proforma completa, tal como se cargó (con líneas tachadas), para volver a abrirla en el formulario. */

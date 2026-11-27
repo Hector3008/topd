@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { TIPO_PROFORMA, ESTACIONES, MOTIVOS_DESCARTE, MOTIVOS_RECHAZO, MOTIVOS_VENCIMIENTO } from "./tipos.js";
 import { CAMPOS_REPUESTO } from "./catalogo.js";
-import { pickingSchema, relacionalSchema } from "./picking-modelo.js";
+import { pickingSchema, relacionalSchema, despachoSchema } from "./picking-modelo.js";
 import { crearServicioRelacionales } from "./relacionales-servicio.js";
 import { configSchema } from "./config-modelo.js";
 import { crearServicioGuia } from "./guia-servicio.js";
@@ -110,7 +110,8 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       catch (e) { console.error("topd: no se pudo guardar el evento", e); }
     },
   });
-  const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso, relacionales });
+  const Despacho = core.model("Despacho", despachoSchema, "despachos");
+  const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso, relacionales, Despacho });
   const guia = crearServicioGuia({ core });
   // Fotos: se suben a una carpeta de Google Drive y en la base queda solo la URL. Sin configuración quedan apagadas.
   const fotosServicio = fotos?.subir ? fotos : crearServicioFotos({ config: fotos });
@@ -165,6 +166,13 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   // La revisión solo corrige las opciones sacadas de una línea ({ sacados: [...] })
   router.put("/revision/:code/lineas/:lineaId", ...deRevision, async (req, res, next) => {
     try { res.json(await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId, etapa: "revision" })); } catch (e) { responderError(e, res, next); }
+  });
+  // Fotos del despacho: del pedido completo, las toma quien revisa (solo la URL; la imagen sube por POST /fotos)
+  router.post("/revision/:code/despacho/fotos", ...deRevision, async (req, res, next) => {
+    try { res.status(201).json(await picking.agregarFotoDespacho({ code: req.params.code, url: req.body?.url, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+  });
+  router.delete("/revision/:code/despacho/fotos", ...deRevision, async (req, res, next) => {
+    try { res.json(await picking.quitarFotoDespacho({ code: req.params.code, url: req.body?.url, usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
   });
   router.get("/revision", ...deRevision, async (_req, res, next) => {
     try { res.json({ ...(await picking.puntajes()), proformas: await picking.listar({ estados: ["orden_revision"] }) }); } catch (e) { responderError(e, res, next); }

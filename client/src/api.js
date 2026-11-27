@@ -87,6 +87,8 @@ export const api = {
     pendientes: () => pedir("GET", "topd/revision"),
     cerrar: (code) => pedir("POST", `topd/revision/${enc(code)}/cerrar`, {}),
     opciones: (lineas) => pedir("POST", "topd/revision/opciones", { lineas }),
+    agregarFotoDespacho: (code, url) => pedir("POST", `topd/revision/${enc(code)}/despacho/fotos`, { url }),
+    quitarFotoDespacho: (code, url) => pedir("DELETE", `topd/revision/${enc(code)}/despacho/fotos`, { url }),
     marcar: (code, lineaId, cambio) => pedir("PUT", `topd/revision/${enc(code)}/lineas/${enc(lineaId)}`, cambio),
     agregarLinea: (code, cuerpo) => pedir("POST", `topd/revision/${enc(code)}/lineas`, cuerpo),
     agregarFoto: (code, lineaId, url) => pedir("POST", `topd/revision/${enc(code)}/lineas/${enc(lineaId)}/fotos`, { url }),
@@ -143,6 +145,8 @@ export function mensajeDeError(e) {
   if (e.codigo === "CONFIG_INVALIDA" || e.codigo === "EMISOR_INVALIDO" || e.codigo === "DESTINO_INVALIDO") return e.message;
   if (e.codigo === "LINEA_INVALIDA" || e.codigo === "LINEAS_REQUERIDAS") return e.message;
   if (e.status === 429) return "Demasiados intentos. Espera unos minutos.";
+  // Fotos y Google: el servidor ya explica qué pasó (falta configurar, Google rechazó, foto muy grande…)
+  if (e.codigo && /^(GOOGLE_|FOTO|DEMASIADAS_FOTOS|LIMITE_FOTOS|ESTADO_NO_FOTOS|IMAGEN)/.test(e.codigo)) return e.message;
   if (e.status >= 500) return "El servidor tuvo un problema. Intenta de nuevo en un momento.";
   return e.message || "No se pudo completar la acción.";
 }

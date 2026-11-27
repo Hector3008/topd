@@ -53,3 +53,14 @@ export const relacionalSchema = new mongoose.Schema(
 relacionalSchema.plugin(tenancyPlugin);
 relacionalSchema.index({ empresaId: 1, code: 1, lineaId: 1, codigo: 1 }, { unique: true });
 relacionalSchema.index({ empresaId: 1, fecha: 1, estado: 1 });
+
+// Fotos del despacho: del pedido completo (no de una línea), las toma quien revisa antes de entregarlo. Solo se guarda la URL.
+export const despachoSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true },
+    fotos: { type: [new mongoose.Schema({ url: { type: String, required: true }, ts: { type: Date, default: Date.now }, porId: { type: ObjectId, default: null } }, { _id: false })], default: [] },
+  },
+  { timestamps: true },
+);
+despachoSchema.plugin(tenancyPlugin);
+despachoSchema.index({ empresaId: 1, code: 1 }, { unique: true });
