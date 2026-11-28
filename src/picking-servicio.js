@@ -140,7 +140,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
      * Marca una línea (parcial: solo cambia lo que llega). Con `etapa: "revision"` (la proforma está en orden_revision) quien
      * revisa solo puede corregir lo sacado (`sacados`), por ejemplo sumar una opción que el almacén no usó.
      */
-    async marcar({ code, lineaId, cambio, usuarioId, etapa = "almacen" }) {
+    async marcar({ code, lineaId, cambio, usuarioId, etapa = "almacen", puntajesItem = {} }) {
       const doc = await cargarProforma(code);
       const enRevision = etapa === "revision";
       if (doc.estado !== (enRevision ? ESTADO_REVISION : ESTADO_PICKING))
@@ -152,7 +152,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
 
       const actual = await Picking.findOne({ code, lineaId }).lean();
       const cfg = await servicio.config();
-      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), extras: cfg.extras });
+      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), puntajesItem, extras: cfg.extras });
       // La revisión no cambia cuándo ni quién resolvió la línea en el almacén (los reportes cuentan esa marca)
       if (enRevision && actual) Object.assign(fila, { resueltoTs: actual.resueltoTs ?? fila.resueltoTs, iniciadoTs: actual.iniciadoTs ?? fila.iniciadoTs });
       const guardada = await Picking.findOneAndUpdate(
@@ -178,7 +178,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
      * en el almacén queda por buscar como cualquier línea y en la revisión hay que decir el piso (ya está en la mano).
      * La línea guarda quién y cuándo la agregó (`agregada`) para que ventas lo vea.
      */
-    async agregarLinea({ code, etapa, descripcion, cantidad, precioUnitario = null, codigo = "", piso = null, usuarioId }) {
+    async agregarLinea({ code, etapa, descripcion, cantidad, precioUnitario = null, codigo = "", piso = null, usuarioId, puntajesItem = {} }) {
       if (etapa !== "almacen" && etapa !== "revision") throw new ErrorPicking("ETAPA_INVALIDA", "La etapa debe ser almacen o revision");
       const doc = await cargarProforma(code);
       const esperado = etapa === "revision" ? ESTADO_REVISION : ESTADO_PICKING;
@@ -197,7 +197,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       const cfg = await servicio.config();
       const cambio = cod ? { sacados: [{ codigo: cod, descripcion: String(descripcion ?? "").trim().slice(0, 120), cantidad: nueva.cantidad, piso, agregada: etapa }] }
         : etapa === "revision" ? { estado: "encontrado", piso, cantidadEncontrada: nueva.cantidad } : null;
-      const fila = cambio ? aplicarMarca(null, cambio, { linea: nueva, puntajesPiso: puntajesDe(cfg), extras: cfg.extras, ahora }) : null; // valida antes de guardar nada
+      const fila = cambio ? aplicarMarca(null, cambio, { linea: nueva, puntajesPiso: puntajesDe(cfg), puntajesItem, extras: cfg.extras, ahora }) : null; // valida antes de guardar nada
       const nuevo = await documentos.nuevaVersion({ code, usuarioId, esperaVersion: doc.version, doc: { ...d, lineas: todas } });
       if (fila) await Picking.findOneAndUpdate({ code, lineaId: nueva.id }, { $set: { ...fila, porId: usuarioId } }, { upsert: true, returnDocument: "after", lean: true });
       await registrarEvento("picking.linea_agregada", {

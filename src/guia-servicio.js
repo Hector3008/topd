@@ -37,6 +37,19 @@ export function crearServicioGuia({ core, ahora = () => Date.now() }) {
       }
       return { catalogo: { total }, lineas: salida };
     },
+    /** Puntos propios de picking de los ítems con esos códigos (columna PUNTAJE de la hoja): { codigo: puntaje }; los que no tienen no salen. */
+    async puntajesDe({ empresaId, codigos }) {
+      const quiero = new Set((Array.isArray(codigos) ? codigos : []).filter((c) => typeof c === "string").map((c) => c.trim().slice(0, 40)));
+      const salida = {};
+      if (!quiero.size) return salida;
+      const { indice: idx } = await indice(empresaId);
+      for (const { item } of idx) {
+        const p = item.atributos?.PUNTAJE;
+        if (!Number.isFinite(p)) continue;
+        for (const c of [item.atributos?.CODIGO_FORMATEADO, item.codigo]) if (c && quiero.has(c)) salida[c] = p;
+      }
+      return salida;
+    },
     /** Olvida el catálogo guardado (para probar o tras una importación). */
     olvidar(empresaId) { empresaId === undefined ? cache.clear() : cache.delete(empresaId); },
   };

@@ -39,7 +39,7 @@ export const ETAPAS_AGREGADO = ["almacen", "revision"];
  * Aplica un cambio parcial sobre la fila actual (o una vacía) y valida el resultado completo.
  * Devuelve la fila nueva; el puntaje se recalcula siempre desde el piso.
  */
-export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, extras = {}, ahora = new Date() } = {}) {
+export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, puntajesItem = {}, extras = {}, ahora = new Date() } = {}) {
   const base = {
     estado: "pendiente",
     piso: null,
@@ -99,7 +99,8 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
       porCodigo.set(codigo, {
         codigo, descripcion: typeof s.descripcion === "string" ? s.descripcion.trim().slice(0, 120) : "",
         cantidad: s.cantidad, piso: s.piso,
-        puntaje: previo?.puntaje ?? puntajesPiso[s.piso] ?? 0, // lo ya medido no cambia si cambia la tabla
+        // Puntaje propio del ítem (columna PUNTAJE de la hoja) y, si no tiene, el del piso. Lo ya medido no cambia si cambia la tabla.
+        puntaje: previo?.puntaje ?? (Number.isFinite(puntajesItem?.[codigo]) && puntajesItem[codigo] >= 0 ? puntajesItem[codigo] : puntajesPiso[s.piso] ?? 0),
         ...(agregada && { agregada }),
       });
     }

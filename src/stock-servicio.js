@@ -153,5 +153,5 @@ export function stockDeEntorno(env = process.env) {
   const email = env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "";
   const clave = env.GOOGLE_PRIVATE_KEY || "";
   if (env.TOPD_STOCK_APAGADO === "1" || !empresaId || !hojaId || !email || !clave) return null;
-  return { empresaId, hojaId, email, clave, rango: env.TOPD_STOCK_RANGO || "RESULT!A:O", cadaMin: Number(env.TOPD_STOCK_CADA_MIN ?? 2) };
+  return { empresaId, hojaId, email, clave, rango: env.TOPD_STOCK_RANGO || "RESULT!A:Z", cadaMin: Number(env.TOPD_STOCK_CADA_MIN ?? 2) };
 }

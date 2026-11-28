@@ -155,7 +155,7 @@ describe("stock: sincronización con el catálogo", () => {
   });
   it("variables de entorno: si falta alguna queda apagada", () => {
     const env = { STOCK_EMPRESA_ID: "e1", SHEET_ID: "h1", GOOGLE_SERVICE_ACCOUNT_EMAIL: "a@b.c", GOOGLE_PRIVATE_KEY: "k" };
-    assert.deepEqual(stockDeEntorno(env), { empresaId: "e1", hojaId: "h1", email: "a@b.c", clave: "k", rango: "RESULT!A:O", cadaMin: 2 });
+    assert.deepEqual(stockDeEntorno(env), { empresaId: "e1", hojaId: "h1", email: "a@b.c", clave: "k", rango: "RESULT!A:Z", cadaMin: 2 });
     assert.equal(stockDeEntorno({ ...env, SHEET_ID: "" }), null);
     assert.equal(stockDeEntorno({ ...env, TOPD_STOCK_APAGADO: "1" }), null);
   });
@@ -189,5 +189,22 @@ describe("stock: lector de Google Sheets", () => {
       : { ok: false, status: 403, json: async () => ({ error: { message: "The caller does not have permission" } }) };
     await assert.rejects(crearLectorHoja({ email: "e", clave: pem, hojaId: "h", fetch }), /does not have permission/);
     await assert.rejects(crearLectorHoja({ email: "e", clave: "no-es-clave", hojaId: "h", fetch }), /clave privada/);
+  });
+});
+
+describe("stock: columna PUNTAJE", () => {
+  it("lee PUNTAJE (o PUNTAJE PICKING) como atributo; vacío, negativo o fuera de rango = null", () => {
+    const enc = ["DICTIONARY", "NOMBRE COMERCIAL", "PUNTAJE"];
+    const { productos } = productosDeHoja([enc, ["A1", "uno", "2.5"], ["A2", "dos", ""], ["A3", "tres", "-1"], ["A4", "cuatro", "5000"], ["A5", "cinco", "0"]]);
+    assert.deepEqual(productos.map((p) => p.atributos.PUNTAJE), [2.5, null, null, null, 0]);
+    const otro = productosDeHoja([["DICTIONARY", "Puntaje Picking"], ["B1", "7"]]).productos[0];
+    assert.equal(otro.atributos.PUNTAJE, 7);
+  });
+  it("sin la columna, PUNTAJE es null y la huella cambia al cambiar el puntaje", () => {
+    const sin = productosDeHoja([["DICTIONARY"], ["C1"]]).productos[0];
+    assert.equal(sin.atributos.PUNTAJE, null);
+    const a = productosDeHoja([["DICTIONARY", "PUNTAJE"], ["C1", "1"]]).productos[0];
+    const b = productosDeHoja([["DICTIONARY", "PUNTAJE"], ["C1", "2"]]).productos[0];
+    assert.notEqual(a.huella, b.huella);
   });
 });

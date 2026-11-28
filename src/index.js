@@ -113,6 +113,9 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   const Despacho = core.model("Despacho", despachoSchema, "despachos");
   const picking = crearServicioPicking({ core, Picking, Config, puntajesPiso, relacionales, Despacho });
   const guia = crearServicioGuia({ core });
+  // Puntos propios de los ítems (columna PUNTAJE de la hoja de stock) para las opciones que se están sacando; si falla, rige el piso.
+  const puntajesItem = async (req, codigos) => { try { return await guia.puntajesDe({ empresaId: req.auth.empresaId, codigos }); } catch (e) { console.error("topd: no se pudieron leer los puntajes de los ítems", e?.message); return {}; } };
+  const codigosDe = (b) => [...(Array.isArray(b?.sacados) ? b.sacados.map((x) => x?.codigo) : []), b?.codigo];
   // Fotos: se suben a una carpeta de Google Drive y en la base queda solo la URL. Sin configuración quedan apagadas.
   const fotosServicio = fotos?.subir ? fotos : crearServicioFotos({ config: fotos });
   // Sincronización de stock desde la hoja de cálculo (5.74). Sin variables de entorno queda apagada y la API lo dice.
@@ -136,7 +139,7 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   });
   router.put("/picking/:code/lineas/:lineaId", ...deProduccion, async (req, res, next) => {
     try {
-      const fila = await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId });
+      const fila = await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId, puntajesItem: await puntajesItem(req, codigosDe(req.body)) });
       res.json(fila);
     } catch (e) { responderError(e, res, next); }
   });
@@ -158,14 +161,14 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
   // Sumar un ítem que el pedido no traía: desde el almacén (orden_salida) o desde la revisión (orden_revision)
   const cuerpoDeLinea = (b) => ({ descripcion: b?.descripcion, cantidad: b?.cantidad, precioUnitario: b?.precioUnitario ?? null, codigo: b?.codigo ?? "", piso: b?.piso ?? null });
   router.post("/picking/:code/lineas", ...deProduccion, async (req, res, next) => {
-    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "almacen", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "almacen", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId, puntajesItem: await puntajesItem(req, codigosDe(req.body)) })); } catch (e) { responderError(e, res, next); }
   });
   router.post("/revision/:code/lineas", ...deRevision, async (req, res, next) => {
-    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "revision", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId })); } catch (e) { responderError(e, res, next); }
+    try { res.status(201).json(await picking.agregarLinea({ code: req.params.code, etapa: "revision", ...cuerpoDeLinea(req.body), usuarioId: req.auth.usuarioId, puntajesItem: await puntajesItem(req, codigosDe(req.body)) })); } catch (e) { responderError(e, res, next); }
   });
   // La revisión solo corrige las opciones sacadas de una línea ({ sacados: [...] })
   router.put("/revision/:code/lineas/:lineaId", ...deRevision, async (req, res, next) => {
-    try { res.json(await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId, etapa: "revision" })); } catch (e) { responderError(e, res, next); }
+    try { res.json(await picking.marcar({ code: req.params.code, lineaId: req.params.lineaId, cambio: req.body, usuarioId: req.auth.usuarioId, etapa: "revision", puntajesItem: await puntajesItem(req, codigosDe(req.body)) })); } catch (e) { responderError(e, res, next); }
   });
   // Fotos del despacho: del pedido completo, las toma quien revisa (solo la URL; la imagen sube por POST /fotos)
   router.post("/revision/:code/despacho/fotos", ...deRevision, async (req, res, next) => {

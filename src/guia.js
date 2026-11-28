@@ -21,6 +21,7 @@ export function opcionDeItem(i) {
     id: i.id ?? null, codigo: atr(i, "CODIGO_FORMATEADO") || i.codigo, descripcion: i.nombre,
     familia: atr(i, "FAMILIA"), subfamilia: atr(i, "SUBFAMILIA"), proveedor: atr(i, "PROVEEDOR"), marca: atr(i, "MARCA"),
     stockLV: atr(i, "STOCK_LV"), stockSJL: atr(i, "STOCK_SJL"), ubicacion: atr(i, "UBICACION"),
+    puntaje: Number.isFinite(i.atributos?.PUNTAJE) ? i.atributos.PUNTAJE : null, // puntos propios del ítem (null = rige el del piso)
     equivalentes: Array.isArray(eq) ? eq.join(", ") : String(eq ?? ""),
     precioSugerido: i.precio ?? (atr(i, "PRECIO_SUGERIDO") === "" ? null : atr(i, "PRECIO_SUGERIDO")),
   };

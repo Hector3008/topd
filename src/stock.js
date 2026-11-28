@@ -2,14 +2,15 @@
 // su cron) en productos del catálogo común. Lógica pura, sin red ni base de datos.
 //
 // Columnas de la hoja: DICTIONARY (código mostrado), CODE, LV, SJL, TOTAL, EQUIVALENTE + STOCK, NOMBRE COMERCIAL,
-// FAMILIA, SUBFAMILIA, PROVEEDOR, MARCA, UBICACION, PRECIO SUGERIDO. Solo se necesita DICTIONARY; las demás son opcionales.
+// FAMILIA, SUBFAMILIA, PROVEEDOR, MARCA, UBICACION, PRECIO SUGERIDO, PUNTAJE (o PUNTAJE PICKING: puntos del picking de ese ítem; vacío =
+// rige el puntaje del piso). Solo se necesita DICTIONARY; las demás son opcionales.
 import { createHash } from "node:crypto";
 import { normalizar } from "./guia.js";
 
 export const COLUMNAS = Object.freeze({
   DICTIONARY: "codigo", CODE: "code", LV: "lv", SJL: "sjl", TOTAL: "total", "EQUIVALENTE + STOCK": "equivalentes",
   "NOMBRE COMERCIAL": "nombre", FAMILIA: "familia", SUBFAMILIA: "subfamilia", PROVEEDOR: "proveedor", MARCA: "marca",
-  UBICACION: "ubicacion", "PRECIO SUGERIDO": "precio",
+  UBICACION: "ubicacion", "PRECIO SUGERIDO": "precio", PUNTAJE: "puntaje", "PUNTAJE PICKING": "puntaje",
 });
 const CODIGO_VALIDO = /^[A-Za-z0-9._\-/]{1,40}$/;
 export const ORIGEN = "hoja"; // marca de los productos que administra la hoja (los creados a mano no se desactivan solos)
@@ -61,6 +62,7 @@ export function productosDeHoja(valores) {
     vistos.set(k, nFila);
 
     const precio = numero(dato(fila, "precio"));
+    const pun = numero(dato(fila, "puntaje"));
     const equivalentes = texto(dato(fila, "equivalentes"), 500);
     const p = {
       codigo,
@@ -79,6 +81,7 @@ export function productosDeHoja(valores) {
         PROVEEDOR: texto(dato(fila, "proveedor"), 200),
         MARCA: texto(dato(fila, "marca"), 200),
         UBICACION: texto(dato(fila, "ubicacion"), 200),
+        PUNTAJE: pun === null || pun < 0 || pun > 1000 ? null : Math.round(pun * 100) / 100, // vacío o fuera de 0–1000: rige el del piso
         ORIGEN,
       },
     };

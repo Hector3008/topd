@@ -82,3 +82,25 @@ describe("revisión opción por opción", () => {
     assert.deepEqual(partesDeRevision({ id: "L3", picking: { estado: "no_encontrado" } }).map((x) => x.clave), ["L3"]);
   });
 });
+
+describe("picking: puntaje propio del ítem (columna PUNTAJE de la hoja)", () => {
+  const conItem = (cambio, puntajesItem, actual = null) => aplicarMarca(actual, cambio, { linea, puntajesPiso: PISOS, puntajesItem });
+  it("el ítem con puntaje propio lo usa en cualquier piso; el que no tiene toma el del piso", () => {
+    const f = conItem({ sacados: [a, b] }, { "ZM-1": 10 });
+    assert.deepEqual(f.sacados.map((s) => [s.codigo, s.piso, s.puntaje]), [["ZM-1", 1, 10], ["19812", 3, 3]]);
+    assert.equal(f.puntaje, 13);
+  });
+  it("un puntaje propio de 0 vale 0 (no cae al piso)", () => {
+    const f = conItem({ sacados: [a] }, { "ZM-1": 0 });
+    assert.equal(f.puntaje, 0);
+  });
+  it("valores inválidos se ignoran y rige el piso", () => {
+    const f = conItem({ sacados: [a, b] }, { "ZM-1": -5, "19812": "x" });
+    assert.equal(f.puntaje, 4);
+  });
+  it("lo ya medido no cambia si después cambia el puntaje del ítem", () => {
+    const f1 = conItem({ sacados: [a] }, { "ZM-1": 10 });
+    const f2 = conItem({ sacados: [{ ...a, cantidad: 2 }] }, { "ZM-1": 99 }, f1);
+    assert.equal(f2.sacados[0].puntaje, 10);
+  });
+});

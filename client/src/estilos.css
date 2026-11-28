@@ -195,3 +195,4 @@ select { font: inherit; color: var(--texto); background: var(--tarjeta); border:
 .buscador-cat__lista { list-style: none; padding: 0; margin: 6px 0; font-size: .9rem; }
 .buscador-cat__lista li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
 .buscador-cat__lista small { color: var(--suave); }
+.sacar__pts { opacity: .8; font-size: .75rem; border: 1px solid rgba(128,128,128,.4); border-radius: 999px; padding: 2px 8px; }

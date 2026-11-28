@@ -217,3 +217,13 @@ La lectura de fotos fallaba con `400 tool_choice: type "tool" and "any" are not 
 ## Corte W: cantidad vacía en el papel
 
 Si una línea del papel no trae cantidad pero sí precio unitario (y no hay importe, o el importe es igual al precio), la lectura supone **1 unidad**, marca la línea como dudosa y avisa con `CANTIDAD_SUPUESTA` («no tiene cantidad escrita; se puso 1»). Si falta también el precio, sigue el aviso `CANTIDAD_DUDOSA`. Un «02» escrito en el papel ya se lee como 2.
+
+## Corte X: puntaje por ítem desde la hoja de stock
+
+La hoja de stock (pestaña `RESULT`) puede traer una columna **`PUNTAJE`** (o `PUNTAJE PICKING`) con los puntos de picking de ese ítem. Se guarda en el catálogo como atributo `PUNTAJE` al sincronizar (el rango por defecto pasó de `RESULT!A:O` a `RESULT!A:Z` para alcanzar la columna; `TOPD_STOCK_RANGO` sigue mandando si está puesto).
+
+- **Con puntaje en la hoja** → esa opción sacada vale esos puntos, en cualquier piso (un `0` vale 0).
+- **Vacío, negativo o mayor que 1000** → vale el puntaje del piso configurado en la pestaña Configuración, como hasta ahora.
+- Los ítems libres (sin código de catálogo) siguen con el puntaje del piso.
+- El puntaje es **por opción sacada**, igual que antes (no se multiplica por las unidades). Lo ya medido no cambia si después cambia la hoja.
+- El servidor lo resuelve al marcar (`POST/PUT` de picking y revisión, y al agregar ítems); la guía de Almacén muestra «N pts» junto a las opciones que tienen puntaje propio. El catálogo se relee cada 5 minutos.
