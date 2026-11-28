@@ -135,7 +135,7 @@ export function mensajeDeError(e) {
   if (e.status === 401) return "Tu sesión caducó. Vuelve a entrar.";
   if (e.status === 403) return "Tu rol no puede hacer esto.";
   if (e.codigo === "OCR_NO_CONFIGURADO") return "La lectura de fotos aún no está activada. Carga la proforma a mano.";
-  if (e.codigo === "LIMITE_LECTURAS" || e.codigo === "OCR_FALLO" || e.codigo === "OCR_OCUPADO" || e.codigo === "OCR_SIN_CONEXION" || e.codigo === "IMAGEN_GRANDE") return e.message;
+  if (e.codigo === "LIMITE_LECTURAS" || e.codigo === "IMAGEN_GRANDE" || String(e.codigo ?? "").startsWith("OCR_")) return e.message;
   if (e.codigo === "CABECERA_INVALIDA" || e.codigo === "PAGOS_INVALIDOS") return e.message;
   if (e.codigo === "ESTADO_NO_REVISION") return "Esta proforma ya no está para revisar. Se recargó la lista.";
   if (e.codigo === "PICKING_INCOMPLETO") return "Quedan líneas sin resolver.";

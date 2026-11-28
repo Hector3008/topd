@@ -55,7 +55,7 @@ export function createRouter({ core, puntajesPiso = PUNTAJES_PISO, dist = DIST_P
       res.json(lectura);
     } catch (e) {
       if (e instanceof ErrorOcr) {
-        const http = { OCR_NO_CONFIGURADO: 503, OCR_SIN_CONEXION: 502, OCR_FALLO: 502, OCR_OCUPADO: 503, LIMITE_LECTURAS: 429, IMAGEN_GRANDE: 413 }[e.codigo] ?? 400;
+        const http = { OCR_NO_CONFIGURADO: 503, OCR_SIN_CONEXION: 502, OCR_FALLO: 502, OCR_CLAVE: 502, OCR_SIN_SALDO: 502, OCR_MODELO: 502, OCR_OCUPADO: 503, LIMITE_LECTURAS: 429, IMAGEN_GRANDE: 413 }[e.codigo] ?? 400;
         return res.status(http).json({ error: e.message, codigo: e.codigo, detalle: e.detalle });
       }
       next(e);

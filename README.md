@@ -209,3 +209,7 @@ Además de las fotos por línea, quien revisa puede subir **fotos del despacho d
 ## Corte U: «Tomar foto» con la cámara
 
 En el teléfono, el botón de fotos ahora ofrece dos opciones: **📷 Tomar foto** (abre la cámara trasera con `capture="environment"`) y **🖼️ Galería** (el selector de siempre). En la computadora, «Tomar foto» abre el selector de archivos. Solo cambia `client/src/FotosLinea.jsx`; hay que correr `npm run build`.
+
+## Corte V: arreglo del OCR con el modelo actual
+
+La lectura de fotos fallaba con `400 tool_choice: type "tool" and "any" are not supported for this model`: el modelo no admite forzar la herramienta. Ahora `tool_choice` va en `auto` y el mensaje pide llamar a `registrar_proforma`; `max_tokens` sube a 8192 (hojas largas). Además los fallos del motor dan un mensaje claro: clave inválida (`OCR_CLAVE`), sin saldo (`OCR_SIN_SALDO`), modelo inexistente (`OCR_MODELO`); el front muestra cualquier error `OCR_*`.

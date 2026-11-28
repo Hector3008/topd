@@ -75,7 +75,8 @@ describe("ocr: el motor de visión", () => {
     assert.equal(enviado.headers["x-api-key"], "k");
     assert.equal(enviado.cuerpo.model, "m");
     assert.match(enviado.cuerpo.system, /escrita a mano/);
-    assert.equal(enviado.cuerpo.tool_choice.name, "registrar_proforma");
+    assert.deepEqual(enviado.cuerpo.tool_choice, { type: "auto" });
+    assert.equal(enviado.cuerpo.tools[0].name, "registrar_proforma");
     assert.equal(enviado.cuerpo.messages[0].content[0].source.media_type, "image/jpeg");
     await lector.leerProforma({ imagen: FOTO, modo: "impreso" });
     assert.match(enviado.cuerpo.system, /impresa o llenada a máquina/);
@@ -94,6 +95,9 @@ describe("ocr: el motor de visión", () => {
     const mal = (f) => crearLector({ apiKey: "k", fetchFn: f }).leerProforma({ imagen: FOTO, modo: "impreso" });
     await assert.rejects(mal(respuesta({ error: { message: "x" } }, false, 429)), (e) => e.codigo === "OCR_OCUPADO");
     await assert.rejects(mal(respuesta({}, false, 500)), (e) => e.codigo === "OCR_FALLO");
+    await assert.rejects(mal(respuesta({ error: { message: "invalid x-api-key" } }, false, 401)), (e) => e.codigo === "OCR_CLAVE");
+    await assert.rejects(mal(respuesta({ error: { message: "Your credit balance is too low to access the Anthropic API." } }, false, 400)), (e) => e.codigo === "OCR_SIN_SALDO");
+    await assert.rejects(mal(respuesta({ error: { message: "model: x" } }, false, 404)), (e) => e.codigo === "OCR_MODELO");
     await assert.rejects(mal(respuesta({ content: [{ type: "text", text: "hola" }] })), (e) => e.codigo === "OCR_FALLO");
     await assert.rejects(mal(async () => { throw new Error("red"); }), (e) => e.codigo === "OCR_SIN_CONEXION");
   });

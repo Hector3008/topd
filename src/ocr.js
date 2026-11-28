@@ -162,15 +162,17 @@ export function motorVision({ apiKey, modelo, fetchFn = fetch, url = "https://ap
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
           model: modelo,
-          max_tokens: 4096,
+          max_tokens: 8192,
           system: INSTRUCCIONES[modo],
           tools: [{ name: "registrar_proforma", description: "Registra la proforma transcrita", input_schema: ESQUEMA_LECTURA }],
-          tool_choice: { type: "tool", name: "registrar_proforma" },
+          // Algunos modelos no admiten forzar la herramienta (error 400 «tool_choice … not supported»): se deja en automático
+          // y se pide la herramienta en el mensaje.
+          tool_choice: { type: "auto" },
           messages: [{
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-              { type: "text", text: "Transcribe esta proforma." },
+              { type: "text", text: "Transcribe esta proforma llamando a la herramienta registrar_proforma. No respondas con texto." },
             ],
           }],
         }),
@@ -181,6 +183,10 @@ export function motorVision({ apiKey, modelo, fetchFn = fetch, url = "https://ap
     if (!r.ok) {
       const cuerpo = await r.json().catch(() => null);
       console.error("topd: el motor de OCR respondió", r.status, cuerpo?.error?.message);
+      const texto = String(cuerpo?.error?.message ?? "");
+      if (r.status === 401 || r.status === 403) throw new ErrorOcr("OCR_CLAVE", "La clave del servicio de lectura no es válida o no tiene permiso. Revisa ANTHROPIC_API_KEY en el servidor.");
+      if (r.status === 402 || /credit balance|saldo/i.test(texto)) throw new ErrorOcr("OCR_SIN_SALDO", "La cuenta del servicio de lectura no tiene saldo. Carga saldo en la consola de Anthropic o carga la proforma a mano.");
+      if (r.status === 404) throw new ErrorOcr("OCR_MODELO", "El modelo de lectura no existe para esta cuenta. Revisa TOPD_OCR_MODELO en el servidor.");
       throw new ErrorOcr(r.status === 429 ? "OCR_OCUPADO" : "OCR_FALLO", "El servicio de lectura no pudo leer la foto. Intenta de nuevo o carga la proforma a mano.");
     }
     const d = await r.json();
