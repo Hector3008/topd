@@ -201,3 +201,11 @@ Ruta para buscar desde la revisión: `POST /revision/opciones` (igual que la del
 ## Foto del despacho (corte S)
 
 Además de las fotos por línea, quien revisa puede subir **fotos del despacho del pedido completo**, como en el siscore («📦 Foto del despacho (pedido completo)» al pie de cada pedido en Revisión; hasta 10). Se guardan en la colección `despachos` (una fila por proforma, solo URLs con quién y cuándo), no dentro del documento, así que no crean versiones ni chocan con ediciones. Se pueden agregar y quitar mientras la proforma está en `orden_revision`; al cerrarla quedan fijas y **Bandeja** las muestra (solo lectura). Rutas: `POST` y `DELETE /revision/:code/despacho/fotos` con `{ url }` (la imagen sube antes por `POST /fotos`, igual que las demás fotos); la lista de proformas trae `fotosDespacho: [url]`. Eventos `picking.foto_despacho` y `picking.foto_despacho_quitada`. No es obligatoria para cerrar. Las fotos por línea de la revisión siguen existiendo. Esta versión también muestra el motivo real de los errores de fotos y de Google en pantalla (antes salía «El servidor tuvo un problema»). Pruebas: 182.
+
+## Página de presentación `/info` (corte T)
+
+`GET <base>/topd/info` (en `ilnapo.com/topd/info`) sirve una página pública, **sin sesión**, que explica qué es topd: el titular, una línea de ejemplo sacada de dos opciones, el recorrido de las cuatro estaciones, lo que hace hoy, lo que sigue y el botón «Entrar» (apunta a la raíz del montaje, `/topd/`, que el servidor pone según `req.baseUrl`). Es un solo archivo, `src/info.html`, con estilos y animación propios (una sola animación al cargar, desactivada con `prefers-reduced-motion`; modo claro y oscuro; funciona en celular). Solo carga las fuentes Barlow desde Google Fonts y, si no llegan, usa fuentes del sistema. Para cambiar textos se edita ese archivo; no necesita `npm run build`. Respuesta con `Cache-Control: public, max-age=300`. Pruebas: 183.
+
+## Corte U: «Tomar foto» con la cámara
+
+En el teléfono, el botón de fotos ahora ofrece dos opciones: **📷 Tomar foto** (abre la cámara trasera con `capture="environment"`) y **🖼️ Galería** (el selector de siempre). En la computadora, «Tomar foto» abre el selector de archivos. Solo cambia `client/src/FotosLinea.jsx`; hay que correr `npm run build`.

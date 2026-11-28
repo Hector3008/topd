@@ -45,10 +45,19 @@ export default function FotosLinea({ titulo = "Fotos", fotos = [], max = 5, alAg
         </span>
       ))}
       {editable && activo && fotos.length < max && (
-        <label className={"btn fotos__agregar" + (subiendo ? " btn--ocupado" : "")}>
-          {subiendo ? "Subiendo…" : "📷 Agregar foto"}
-          <input type="file" accept="image/*" hidden disabled={subiendo} onChange={elegir} />
-        </label>
+        <>
+          {/* `capture` abre la cámara del teléfono directamente; en la computadora cae al selector de archivos. */}
+          <label className={"btn fotos__agregar" + (subiendo ? " btn--ocupado" : "")}>
+            {subiendo ? "Subiendo…" : "📷 Tomar foto"}
+            <input type="file" accept="image/*" capture="environment" hidden disabled={subiendo} onChange={elegir} data-origen="camara" />
+          </label>
+          {!subiendo && (
+            <label className="btn fotos__agregar">
+              🖼️ Galería
+              <input type="file" accept="image/*" hidden onChange={elegir} data-origen="galeria" />
+            </label>
+          )}
+        </>
       )}
       {error && <span className="aviso-error" role="alert">{error}</span>}
     </div>
