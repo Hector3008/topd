@@ -129,3 +129,19 @@ describe("cabecera guardada", () => {
     assert.equal(c.agencia.length, 200);
   });
 });
+
+describe("ocr: cantidad vacía en el papel", () => {
+  it("supone 1 cuando hay precio y no hay cantidad ni importe, y lo avisa", () => {
+    const r = normalizarLectura({ lineas: [
+      { cantidad: null, descripcion: "Arrancador 39 MT", precio_unitario: 900, importe: null, anulada: false },
+      { cantidad: 2, descripcion: "Alternador 24 SI", precio_unitario: 630, importe: 1260, anulada: false },
+      { cantidad: null, descripcion: "Sin precio", precio_unitario: null, importe: null, anulada: false },
+    ] });
+    assert.equal(r.lineas[0].cantidad, 1);
+    assert.equal(r.lineas[0].cantidadSupuesta, true);
+    assert.equal(r.lineas[0].dudoso, true);
+    assert.equal(r.lineas[1].cantidad, 2);
+    assert.equal(r.lineas[2].cantidad, null);
+    assert.deepEqual(r.avisos.map((a) => [a.codigo, a.linea]), [["CANTIDAD_SUPUESTA", 0], ["CANTIDAD_DUDOSA", 2]]);
+  });
+});

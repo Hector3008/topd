@@ -92,9 +92,12 @@ export function normalizarLectura(crudo) {
   const c = crudo?.cabecera ?? {};
   const dudosos = new Set((Array.isArray(crudo?.dudosos) ? crudo.dudosos : []).map((d) => String(d).toLowerCase()));
   const lineas = (Array.isArray(crudo?.lineas) ? crudo.lineas : []).map((l, i) => {
-    const cantidad = num(l?.cantidad);
+    let cantidad = num(l?.cantidad);
     const precioUnitario = num(l?.precio_unitario ?? l?.precioUnitario);
     const importe = num(l?.importe);
+    // En el papel, la cantidad vacía con un precio y sin importe suele ser 1 unidad: se supone 1 y se avisa para que la persona lo confirme.
+    let cantidadSupuesta = false;
+    if (cantidad == null && l?.anulada !== true && txt(l?.descripcion) && precioUnitario != null && (importe == null || importe === precioUnitario)) { cantidad = 1; cantidadSupuesta = true; }
     const clave = `linea ${i + 1}`;
     return {
       cantidad,
@@ -102,7 +105,8 @@ export function normalizarLectura(crudo) {
       precioUnitario,
       importe,
       anulada: l?.anulada === true,
-      dudoso: [...dudosos].some((d) => d.startsWith(clave)) || cantidad == null || !Number.isInteger(cantidad) || cantidad < 1 || !txt(l?.descripcion),
+      ...(cantidadSupuesta ? { cantidadSupuesta: true } : {}),
+      dudoso: cantidadSupuesta || [...dudosos].some((d) => d.startsWith(clave)) || cantidad == null || !Number.isInteger(cantidad) || cantidad < 1 || !txt(l?.descripcion),
       // Datos de catálogo que traen los archivos (Excel/PDF); la lectura de fotos no los usa
       ...Object.fromEntries(["modelo", "codMax", "proveedor", "familia", "comentario"].filter((k) => txt(l?.[k])).map((k) => [k, txt(l[k])])),
     };
@@ -121,7 +125,9 @@ export function normalizarLectura(crudo) {
   if (!lineas.length) avisos.push({ codigo: "SIN_LINEAS", mensaje: "No se pudo leer ninguna línea." });
   lineas.forEach((l, i) => {
     if (l.anulada) return;
-    if (l.cantidad == null || !Number.isInteger(l.cantidad) || l.cantidad < 1)
+    if (l.cantidadSupuesta)
+      avisos.push({ codigo: "CANTIDAD_SUPUESTA", mensaje: `Línea ${i + 1}: no tiene cantidad escrita; se puso 1. Confírmala con el papel.`, linea: i });
+    else if (l.cantidad == null || !Number.isInteger(l.cantidad) || l.cantidad < 1)
       avisos.push({ codigo: "CANTIDAD_DUDOSA", mensaje: `Línea ${i + 1}: la cantidad no es un entero válido.`, linea: i });
     if (l.cantidad && l.precioUnitario != null && l.importe != null && Math.abs(redondear(l.cantidad * l.precioUnitario) - l.importe) > 0.011)
       avisos.push({ codigo: "IMPORTE_NO_CUADRA", mensaje: `Línea ${i + 1}: ${l.cantidad} × ${l.precioUnitario} no da ${l.importe}.`, linea: i });

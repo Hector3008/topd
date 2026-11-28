@@ -213,3 +213,7 @@ En el teléfono, el botón de fotos ahora ofrece dos opciones: **📷 Tomar foto
 ## Corte V: arreglo del OCR con el modelo actual
 
 La lectura de fotos fallaba con `400 tool_choice: type "tool" and "any" are not supported for this model`: el modelo no admite forzar la herramienta. Ahora `tool_choice` va en `auto` y el mensaje pide llamar a `registrar_proforma`; `max_tokens` sube a 8192 (hojas largas). Además los fallos del motor dan un mensaje claro: clave inválida (`OCR_CLAVE`), sin saldo (`OCR_SIN_SALDO`), modelo inexistente (`OCR_MODELO`); el front muestra cualquier error `OCR_*`.
+
+## Corte W: cantidad vacía en el papel
+
+Si una línea del papel no trae cantidad pero sí precio unitario (y no hay importe, o el importe es igual al precio), la lectura supone **1 unidad**, marca la línea como dudosa y avisa con `CANTIDAD_SUPUESTA` («no tiene cantidad escrita; se puso 1»). Si falta también el precio, sigue el aviso `CANTIDAD_DUDOSA`. Un «02» escrito en el papel ya se lee como 2.
