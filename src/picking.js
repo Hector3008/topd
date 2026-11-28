@@ -35,11 +35,24 @@ const esEntero = (n) => Number.isInteger(n);
 export const MAX_SACADOS = 20;
 export const ETAPAS_AGREGADO = ["almacen", "revision"];
 
+const redondear2 = (n) => Math.round(n * 100) / 100;
+/**
+ * Puntos de una opción sacada. Base = puntaje propio del ítem (columna PUNTAJE de la hoja) o, si no tiene, el del piso. Si la opción
+ * «acumula» (columna ACUMULA del ítem o, sin ella, el valor por defecto de la empresa) la base se multiplica por las unidades sacadas;
+ * si no, vale una vez. Lo ya medido (misma opción y piso) conserva su base y su modo; solo el total sigue a las unidades.
+ */
+function puntosDeOpcion({ previo, info, piso, cantidad, puntajesPiso, acumulaPorDefecto }) {
+  const propio = typeof info === "number" ? info : info?.puntaje;
+  const base = previo ? previo.puntajeBase ?? previo.puntaje ?? 0 : Number.isFinite(propio) && propio >= 0 ? propio : puntajesPiso[piso] ?? 0;
+  const acumula = previo ? previo.acumula === true : typeof info?.acumula === "boolean" ? info.acumula : acumulaPorDefecto === true;
+  return { puntaje: redondear2(base * (acumula ? cantidad : 1)), puntajeBase: base, acumula };
+}
+
 /**
  * Aplica un cambio parcial sobre la fila actual (o una vacía) y valida el resultado completo.
  * Devuelve la fila nueva; el puntaje se recalcula siempre desde el piso.
  */
-export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, puntajesItem = {}, extras = {}, ahora = new Date() } = {}) {
+export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PISO, puntajesItem = {}, acumulaPorDefecto = false, extras = {}, ahora = new Date() } = {}) {
   const base = {
     estado: "pendiente",
     piso: null,
@@ -100,7 +113,7 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
         codigo, descripcion: typeof s.descripcion === "string" ? s.descripcion.trim().slice(0, 120) : "",
         cantidad: s.cantidad, piso: s.piso,
         // Puntaje propio del ítem (columna PUNTAJE de la hoja) y, si no tiene, el del piso. Lo ya medido no cambia si cambia la tabla.
-        puntaje: previo?.puntaje ?? (Number.isFinite(puntajesItem?.[codigo]) && puntajesItem[codigo] >= 0 ? puntajesItem[codigo] : puntajesPiso[s.piso] ?? 0),
+        ...puntosDeOpcion({ previo, info: puntajesItem?.[codigo], piso: s.piso, cantidad: s.cantidad, puntajesPiso, acumulaPorDefecto }),
         ...(agregada && { agregada }),
       });
     }
@@ -139,7 +152,7 @@ export function aplicarMarca(actual, cambio, { linea, puntajesPiso = PUNTAJES_PI
   }
 
   // Piso + extras configurables (taller, reconocido por muestra o por foto); por defecto los extras valen 0
-  const basePiso = fila.sacados.length ? fila.sacados.reduce((s, x) => s + (x.puntaje ?? 0), 0) : puntajesPiso[fila.piso] ?? 0;
+  const basePiso = fila.sacados.length ? fila.sacados.reduce((s, x) => s + (x.puntaje ?? 0), 0) : (puntajesPiso[fila.piso] ?? 0) * (acumulaPorDefecto && fila.cantidadEncontrada > 0 ? fila.cantidadEncontrada : 1);
   fila.puntaje = fila.estado === "encontrado"
     ? Math.round((basePiso + (fila.taller ? extras.taller ?? 0 : 0) + (fila.reconocido ? extras[fila.reconocido] ?? 0 : 0)) * 100) / 100
     : 0;

@@ -22,6 +22,7 @@ export function opcionDeItem(i) {
     familia: atr(i, "FAMILIA"), subfamilia: atr(i, "SUBFAMILIA"), proveedor: atr(i, "PROVEEDOR"), marca: atr(i, "MARCA"),
     stockLV: atr(i, "STOCK_LV"), stockSJL: atr(i, "STOCK_SJL"), ubicacion: atr(i, "UBICACION"),
     puntaje: Number.isFinite(i.atributos?.PUNTAJE) ? i.atributos.PUNTAJE : null, // puntos propios del ítem (null = rige el del piso)
+    acumula: typeof i.atributos?.PUNTAJE_ACUMULA === "boolean" ? i.atributos.PUNTAJE_ACUMULA : null, // true = por unidad, false = fijo, null = lo que diga la empresa
     equivalentes: Array.isArray(eq) ? eq.join(", ") : String(eq ?? ""),
     precioSugerido: i.precio ?? (atr(i, "PRECIO_SUGERIDO") === "" ? null : atr(i, "PRECIO_SUGERIDO")),
   };

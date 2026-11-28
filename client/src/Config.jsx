@@ -57,6 +57,12 @@ export default function Config() {
         </details>
 
         <details className="seccion" open>
+          <summary>Cómo suma el puntaje de cada ítem</summary>
+          <p className="nota-suave">Cuando el almacén saca varias unidades de una opción, el puntaje puede valer <b>una vez</b> (fijo por opción) o <b>por cada unidad</b> (acumulado). Cada ítem lo decide en la hoja de stock con la columna ACUMULA (sí / no); los que la dejan vacía usan esta opción. Solo afecta lo que se saque de ahora en adelante.</p>
+          <label className="marca"><input type="checkbox" checked={f.acumulaPorDefecto === true} onChange={(e) => tocar({ ...f, acumulaPorDefecto: e.target.checked })} /> Por defecto, sumar el puntaje por cada unidad sacada</label>
+        </details>
+
+        <details className="seccion" open>
           <summary>Emisores ({f.emisores.filter((e) => e.activo !== false).length})</summary>
           <p className="nota-suave">Quién firma la proforma (razón social o sucursal). Un emisor no se borra: se desactiva, y las proformas ya hechas conservan sus datos.</p>
           {f.emisores.map((e, i) => (

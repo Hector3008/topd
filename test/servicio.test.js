@@ -265,7 +265,7 @@ describe("configuración, emisor, borrador y cotización", () => {
     const e = entorno();
     assert.deepEqual((await e.svc.puntajes()).puntajesPiso, { 1: 1, 2: 2, 3: 3, 4: 4 });
     await e.svc.guardarConfig({ entrada: { pisos: [{ piso: 1, puntaje: 10 }, { piso: 2, puntaje: 20 }], extras: { taller: 5 } }, usuarioId: "u9" });
-    assert.deepEqual(await e.svc.puntajes(), { puntajesPiso: { 1: 10, 2: 20 }, extras: { taller: 5, muestra: 0, foto: 0 } });
+    assert.deepEqual(await e.svc.puntajes(), { puntajesPiso: { 1: 10, 2: 20 }, extras: { taller: 5, muestra: 0, foto: 0 }, acumulaPorDefecto: false });
     const code = await e.svc.crearOrden({ lineas: una });
     await e.svc.marcar({ code, lineaId: "L1", cambio: { estado: "encontrado", piso: 2, taller: true }, usuarioId: "u2" });
     assert.equal(e.filas[0].puntaje, 25);

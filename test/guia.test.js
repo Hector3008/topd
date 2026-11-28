@@ -49,7 +49,7 @@ describe("guía de almacén: opciones del catálogo", () => {
     assert.deepEqual([r.opciones.length, r.total], [5, 30]);
   });
   it("opcionDeItem tolera ítems sin atributos", () => {
-    assert.deepEqual(opcionDeItem(item("X", "Algo")), { id: "i-X", codigo: "X", descripcion: "Algo", familia: "", subfamilia: "", proveedor: "", marca: "", stockLV: "", stockSJL: "", ubicacion: "", equivalentes: "", precioSugerido: null, puntaje: null });
+    assert.deepEqual(opcionDeItem(item("X", "Algo")), { id: "i-X", codigo: "X", descripcion: "Algo", familia: "", subfamilia: "", proveedor: "", marca: "", stockLV: "", stockSJL: "", ubicacion: "", equivalentes: "", precioSugerido: null, puntaje: null, acumula: null });
   });
 });
 
@@ -82,12 +82,14 @@ describe("servicio de la guía", () => {
 });
 
 describe("guía: puntaje propio de los ítems", () => {
-  const cat = [item("A-1", "Uno", { CODIGO_FORMATEADO: "A-1", PUNTAJE: 6 }), item("B-2", "Dos", { CODIGO_FORMATEADO: "B-2", PUNTAJE: 0 }), item("C-3", "Tres", { CODIGO_FORMATEADO: "C-3" })];
+  const cat = [item("A-1", "Uno", { CODIGO_FORMATEADO: "A-1", PUNTAJE: 6, PUNTAJE_ACUMULA: true }), item("B-2", "Dos", { CODIGO_FORMATEADO: "B-2", PUNTAJE: 0 }), item("C-3", "Tres", { CODIGO_FORMATEADO: "C-3" }), item("D-4", "Cuatro", { CODIGO_FORMATEADO: "D-4", PUNTAJE_ACUMULA: false })];
   const svc = crearServicioGuia({ core: { catalogo: { listar: async ({ saltar, limite }) => cat.slice(saltar, saltar + limite) } } });
   it("devuelve solo los que tienen puntaje (el 0 cuenta) y la opción lo expone", async () => {
-    assert.deepEqual(await svc.puntajesDe({ empresaId: "e1", codigos: ["A-1", "B-2", "C-3", "Z-9"] }), { "A-1": 6, "B-2": 0 });
+    assert.deepEqual(await svc.puntajesDe({ empresaId: "e1", codigos: ["A-1", "B-2", "C-3", "D-4", "Z-9"] }), { "A-1": { puntaje: 6, acumula: true }, "B-2": { puntaje: 0, acumula: null }, "D-4": { puntaje: null, acumula: false } });
     assert.deepEqual(await svc.puntajesDe({ empresaId: "e1", codigos: [] }), {});
     assert.equal(opcionDeItem(cat[0]).puntaje, 6);
+    assert.equal(opcionDeItem(cat[0]).acumula, true);
+    assert.equal(opcionDeItem(cat[3]).acumula, false);
     assert.equal(opcionDeItem(cat[2]).puntaje, null);
   });
 });

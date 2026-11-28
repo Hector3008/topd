@@ -104,3 +104,37 @@ describe("picking: puntaje propio del ítem (columna PUNTAJE de la hoja)", () =>
     assert.equal(f2.sacados[0].puntaje, 10);
   });
 });
+
+describe("picking: puntaje acumulado (por unidad) o fijo (por opción)", () => {
+  const m = (cambio, puntajesItem = {}, acumulaPorDefecto = false, actual = null) => aplicarMarca(actual, cambio, { linea, puntajesPiso: PISOS, puntajesItem, acumulaPorDefecto });
+  it("por defecto es fijo: 3 unidades del piso 1 valen 1 punto", () => {
+    assert.equal(m({ sacados: [a] }).puntaje, 1);
+  });
+  it("con acumulaPorDefecto cada unidad suma el puntaje del piso: 3 × 1 + 2 × 3", () => {
+    const f = m({ sacados: [a, b] }, {}, true);
+    assert.deepEqual(f.sacados.map((s) => [s.codigo, s.puntaje, s.puntajeBase, s.acumula]), [["ZM-1", 3, 1, true], ["19812", 6, 3, true]]);
+    assert.equal(f.puntaje, 9);
+  });
+  it("cada ítem manda sobre el valor por defecto: uno acumula (5 c/u) y otro es fijo", () => {
+    const f = m({ sacados: [a, b] }, { "ZM-1": { puntaje: 5, acumula: true }, "19812": { puntaje: null, acumula: false } }, false);
+    assert.deepEqual(f.sacados.map((s) => s.puntaje), [15, 3]); // 3 × 5 ; piso 3 fijo
+    const g = m({ sacados: [a] }, { "ZM-1": { puntaje: 5, acumula: false } }, true);
+    assert.equal(g.puntaje, 5); // el ítem dice «fijo» aunque la empresa acumule
+  });
+  it("al cambiar las unidades de una opción acumulada, el total sigue a las unidades con la base ya medida", () => {
+    const f1 = m({ sacados: [a] }, { "ZM-1": { puntaje: 5, acumula: true } });
+    const f2 = m({ sacados: [{ ...a, cantidad: 4 }] }, { "ZM-1": { puntaje: 99, acumula: false } }, false, f1);
+    assert.deepEqual([f2.sacados[0].puntaje, f2.sacados[0].puntajeBase, f2.sacados[0].acumula], [20, 5, true]);
+  });
+  it("lo medido antes de existir el modo (sin puntajeBase) sigue fijo", () => {
+    const viejo = { sacados: [{ codigo: "ZM-1", cantidad: 3, piso: 1, puntaje: 7 }] };
+    const f = m({ sacados: [{ ...a, cantidad: 2 }] }, {}, true, viejo);
+    assert.equal(f.puntaje, 7);
+  });
+  it("una línea con un solo piso y cantidad acumula si la empresa lo pide", () => {
+    const f = aplicarMarca(null, { estado: "encontrado", piso: 3, cantidadEncontrada: 4 }, { linea, puntajesPiso: PISOS, acumulaPorDefecto: true });
+    assert.equal(f.puntaje, 12);
+    assert.equal(aplicarMarca(null, { estado: "encontrado", piso: 3, cantidadEncontrada: 4 }, { linea, puntajesPiso: PISOS }).puntaje, 3);
+  });
+});
+

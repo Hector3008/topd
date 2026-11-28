@@ -59,3 +59,13 @@ describe("configuración por empresa", () => {
     assert.throws(() => limpiarLineas([]), (e) => e.codigo === "LINEAS_REQUERIDAS");
   });
 });
+
+describe("configuración: acumulaPorDefecto", () => {
+  it("por defecto es false, se guarda y exige un booleano", () => {
+    assert.equal(configPorDefecto().acumulaPorDefecto, false);
+    assert.equal(limpiarConfig({ acumulaPorDefecto: true }).acumulaPorDefecto, true);
+    assert.equal(limpiarConfig({ pisos: [{ piso: 1, puntaje: 1 }] }, { ...configPorDefecto(), acumulaPorDefecto: true }).acumulaPorDefecto, true); // lo no enviado se conserva
+    invalida(() => limpiarConfig({ acumulaPorDefecto: "si" }));
+  });
+});
+

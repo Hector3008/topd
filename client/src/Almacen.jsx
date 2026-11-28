@@ -212,7 +212,7 @@ function Sacar({ o, actual, pisos, piso, max, alPiso, alCantidad }) {
   const cant = actual?.cantidad ?? 0;
   return (
     <div className="sacar" role="group" aria-label={`Sacar ${o.codigo}`}>
-      {o.puntaje != null && <small className="sacar__pts" title="Puntaje propio de este ítem (columna PUNTAJE de la hoja)">{o.puntaje} pts</small>}
+      {o.puntaje != null && <small className="sacar__pts" title="Puntaje propio de este ítem (columnas PUNTAJE y ACUMULA de la hoja)">{o.puntaje} pts{o.acumula === true ? " c/u" : ""}</small>}
       <label>Piso
         <select aria-label={`Piso de ${o.codigo}`} value={piso} onChange={(e) => alPiso(Number(e.target.value))}>
           <option value="" disabled>—</option>

@@ -13,6 +13,7 @@ export function configPorDefecto(puntajesPiso = PUNTAJES_PISO) {
     pisos: Object.entries(puntajesPiso).map(([piso, puntaje]) => ({ piso: Number(piso), puntaje })).sort((a, b) => a.piso - b.piso),
     extras: { taller: 0, muestra: 0, foto: 0 },
     emisores: [],
+    acumulaPorDefecto: false, // ¿el puntaje de una opción sacada se multiplica por sus unidades? Cada ítem puede decidirlo en la hoja (columna ACUMULA)
   };
 }
 
@@ -30,7 +31,11 @@ const puntaje = (v, que) => {
  */
 export function limpiarConfig(entrada, actual = configPorDefecto()) {
   const e = entrada ?? {};
-  const salida = { pisos: actual.pisos, extras: actual.extras, emisores: actual.emisores };
+  const salida = { pisos: actual.pisos, extras: actual.extras, emisores: actual.emisores, acumulaPorDefecto: actual.acumulaPorDefecto === true };
+  if (e.acumulaPorDefecto !== undefined) {
+    if (typeof e.acumulaPorDefecto !== "boolean") throw new ErrorPicking("CONFIG_INVALIDA", "acumulaPorDefecto debe ser sí o no");
+    salida.acumulaPorDefecto = e.acumulaPorDefecto;
+  }
 
   if (e.pisos !== undefined) {
     if (!Array.isArray(e.pisos) || e.pisos.length < 1 || e.pisos.length > MAX_PISOS)

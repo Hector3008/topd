@@ -227,3 +227,13 @@ La hoja de stock (pestaña `RESULT`) puede traer una columna **`PUNTAJE`** (o `P
 - Los ítems libres (sin código de catálogo) siguen con el puntaje del piso.
 - El puntaje es **por opción sacada**, igual que antes (no se multiplica por las unidades). Lo ya medido no cambia si después cambia la hoja.
 - El servidor lo resuelve al marcar (`POST/PUT` de picking y revisión, y al agregar ítems); la guía de Almacén muestra «N pts» junto a las opciones que tienen puntaje propio. El catálogo se relee cada 5 minutos.
+
+## Corte Y: puntaje acumulado o fijo, por ítem
+
+El puntaje de una opción sacada puede valer **una vez** (fijo) o **por cada unidad** (acumulado). Se decide así:
+
+1. **Por ítem**, con la columna **`ACUMULA`** de la hoja de stock (también `PUNTAJE ACUMULA` o `ACUMULA PUNTAJE`): `sí`, `x`, `por unidad` o `c/u` → acumulado; `no`, `fijo` o `por opción` → fijo; vacío → rige el valor por defecto de la empresa. Se guarda como atributo `PUNTAJE_ACUMULA`.
+2. **Por defecto de la empresa**: casilla «Por defecto, sumar el puntaje por cada unidad sacada» en Configuración (`acumulaPorDefecto`, apagada = fijo, como antes).
+
+El puntaje base sale de la columna `PUNTAJE` del ítem o, si no tiene, del piso. Ejemplos con piso 3 = 3 puntos: 4 unidades fijas valen 3; acumuladas valen 12. Cada opción sacada guarda su base (`puntajeBase`) y su modo (`acumula`): si después cambian las unidades, el total sigue a las unidades; si cambia la hoja o la configuración, lo ya medido no se toca (las marcas anteriores a este corte quedan fijas). Una línea marcada «encontrado» con un solo piso y cantidad también acumula si la empresa lo pide. La guía de Almacén muestra «N pts c/u» en las opciones acumuladas.
+

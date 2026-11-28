@@ -63,7 +63,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
     /** Lo que necesita una pantalla del almacén para pintar los pisos: tabla { piso: puntaje } y extras. */
     async puntajes() {
       const c = await servicio.config();
-      return { puntajesPiso: puntajesDe(c), extras: c.extras };
+      return { puntajesPiso: puntajesDe(c), extras: c.extras, acumulaPorDefecto: c.acumulaPorDefecto === true };
     },
 
     async guardarConfig({ entrada, usuarioId }) {
@@ -152,7 +152,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
 
       const actual = await Picking.findOne({ code, lineaId }).lean();
       const cfg = await servicio.config();
-      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), puntajesItem, extras: cfg.extras });
+      const fila = aplicarMarca(actual, cambio, { linea, puntajesPiso: puntajesDe(cfg), puntajesItem, acumulaPorDefecto: cfg.acumulaPorDefecto === true, extras: cfg.extras });
       // La revisión no cambia cuándo ni quién resolvió la línea en el almacén (los reportes cuentan esa marca)
       if (enRevision && actual) Object.assign(fila, { resueltoTs: actual.resueltoTs ?? fila.resueltoTs, iniciadoTs: actual.iniciadoTs ?? fila.iniciadoTs });
       const guardada = await Picking.findOneAndUpdate(
@@ -197,7 +197,7 @@ export function crearServicioPicking({ core, Picking, Config = null, puntajesPis
       const cfg = await servicio.config();
       const cambio = cod ? { sacados: [{ codigo: cod, descripcion: String(descripcion ?? "").trim().slice(0, 120), cantidad: nueva.cantidad, piso, agregada: etapa }] }
         : etapa === "revision" ? { estado: "encontrado", piso, cantidadEncontrada: nueva.cantidad } : null;
-      const fila = cambio ? aplicarMarca(null, cambio, { linea: nueva, puntajesPiso: puntajesDe(cfg), puntajesItem, extras: cfg.extras, ahora }) : null; // valida antes de guardar nada
+      const fila = cambio ? aplicarMarca(null, cambio, { linea: nueva, puntajesPiso: puntajesDe(cfg), puntajesItem, acumulaPorDefecto: cfg.acumulaPorDefecto === true, extras: cfg.extras, ahora }) : null; // valida antes de guardar nada
       const nuevo = await documentos.nuevaVersion({ code, usuarioId, esperaVersion: doc.version, doc: { ...d, lineas: todas } });
       if (fila) await Picking.findOneAndUpdate({ code, lineaId: nueva.id }, { $set: { ...fila, porId: usuarioId } }, { upsert: true, returnDocument: "after", lean: true });
       await registrarEvento("picking.linea_agregada", {

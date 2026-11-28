@@ -17,7 +17,7 @@ export const pickingSchema = new mongoose.Schema(
     // Opciones del catálogo que se sacaron (una línea puede salir de varias): { codigo, descripcion, cantidad, piso, puntaje }
     // Fotos de evidencia (URLs de Drive): del almacén y de la revisión
     fotos: { type: [new mongoose.Schema({ url: String, etapa: String, ts: Date, porId: mongoose.Schema.Types.ObjectId }, { _id: false })], default: [] },
-    sacados: { type: [new mongoose.Schema({ codigo: String, descripcion: { type: String, default: "" }, cantidad: Number, piso: Number, puntaje: { type: Number, default: 0 }, agregada: { type: String, default: undefined } }, { _id: false })], default: [] },
+    sacados: { type: [new mongoose.Schema({ codigo: String, descripcion: { type: String, default: "" }, cantidad: Number, piso: Number, puntaje: { type: Number, default: 0 }, puntajeBase: { type: Number, default: undefined }, acumula: { type: Boolean, default: undefined }, agregada: { type: String, default: undefined } }, { _id: false })], default: [] },
     nota: { type: String, default: "" },
     puntaje: { type: Number, default: 0 },
     iniciadoTs: { type: Date, default: null },

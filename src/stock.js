@@ -11,6 +11,7 @@ export const COLUMNAS = Object.freeze({
   DICTIONARY: "codigo", CODE: "code", LV: "lv", SJL: "sjl", TOTAL: "total", "EQUIVALENTE + STOCK": "equivalentes",
   "NOMBRE COMERCIAL": "nombre", FAMILIA: "familia", SUBFAMILIA: "subfamilia", PROVEEDOR: "proveedor", MARCA: "marca",
   UBICACION: "ubicacion", "PRECIO SUGERIDO": "precio", PUNTAJE: "puntaje", "PUNTAJE PICKING": "puntaje",
+  ACUMULA: "acumula", "PUNTAJE ACUMULA": "acumula", "ACUMULA PUNTAJE": "acumula",
 });
 const CODIGO_VALIDO = /^[A-Za-z0-9._\-/]{1,40}$/;
 export const ORIGEN = "hoja"; // marca de los productos que administra la hoja (los creados a mano no se desactivan solos)
@@ -28,6 +29,14 @@ export function numero(v) {
   else t = t.replace(/,/g, "");
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
+}
+
+/** ACUMULA: «sí»/«por unidad» → true (el puntaje se multiplica por las unidades); «no»/«fijo» → false; vacío o ilegible → null (rige el valor por defecto de la empresa). */
+export function acumula(v) {
+  const t = normalizar(String(v ?? "")).trim().toLowerCase();
+  if (["si", "s", "1", "true", "x", "acumula", "acumulado", "suma", "por unidad", "unidad", "c/u", "cu"].includes(t)) return true;
+  if (["no", "n", "0", "false", "fijo", "por opcion", "una vez", "no acumula"].includes(t)) return false;
+  return null;
 }
 
 const texto = (v, max) => { const t = String(v ?? "").trim().slice(0, max); return t === "" ? null : t; };
@@ -81,6 +90,7 @@ export function productosDeHoja(valores) {
         PROVEEDOR: texto(dato(fila, "proveedor"), 200),
         MARCA: texto(dato(fila, "marca"), 200),
         UBICACION: texto(dato(fila, "ubicacion"), 200),
+        PUNTAJE_ACUMULA: acumula(dato(fila, "acumula")), // true = puntaje por unidad; false = fijo por opción; null = rige el valor por defecto de la empresa
         PUNTAJE: pun === null || pun < 0 || pun > 1000 ? null : Math.round(pun * 100) / 100, // vacío o fuera de 0–1000: rige el del piso
         ORIGEN,
       },

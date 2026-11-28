@@ -266,6 +266,7 @@ export function configParaEnviar(f) {
     pisos: f.pisos.map((p) => ({ piso: Number(p.piso), puntaje: p.puntaje })),
     extras: { taller: f.extras.taller, muestra: f.extras.muestra, foto: f.extras.foto },
     emisores: f.emisores.filter((e) => String(e.nombre ?? "").trim() || e.id),
+    acumulaPorDefecto: f.acumulaPorDefecto === true,
   };
 }
 

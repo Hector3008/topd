@@ -37,7 +37,7 @@ export function crearServicioGuia({ core, ahora = () => Date.now() }) {
       }
       return { catalogo: { total }, lineas: salida };
     },
-    /** Puntos propios de picking de los ítems con esos códigos (columna PUNTAJE de la hoja): { codigo: puntaje }; los que no tienen no salen. */
+    /** Puntos propios de picking de los ítems con esos códigos (columnas PUNTAJE y ACUMULA de la hoja): { codigo: { puntaje, acumula } }; los que no tienen ninguno no salen. */
     async puntajesDe({ empresaId, codigos }) {
       const quiero = new Set((Array.isArray(codigos) ? codigos : []).filter((c) => typeof c === "string").map((c) => c.trim().slice(0, 40)));
       const salida = {};
@@ -45,8 +45,10 @@ export function crearServicioGuia({ core, ahora = () => Date.now() }) {
       const { indice: idx } = await indice(empresaId);
       for (const { item } of idx) {
         const p = item.atributos?.PUNTAJE;
-        if (!Number.isFinite(p)) continue;
-        for (const c of [item.atributos?.CODIGO_FORMATEADO, item.codigo]) if (c && quiero.has(c)) salida[c] = p;
+        const a = item.atributos?.PUNTAJE_ACUMULA;
+        if (!Number.isFinite(p) && typeof a !== "boolean") continue;
+        const info = { puntaje: Number.isFinite(p) ? p : null, acumula: typeof a === "boolean" ? a : null };
+        for (const c of [item.atributos?.CODIGO_FORMATEADO, item.codigo]) if (c && quiero.has(c)) salida[c] = info;
       }
       return salida;
     },

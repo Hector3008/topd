@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, createVerify } from "node:crypto";
-import { numero, productosDeHoja } from "../src/stock.js";
+import { numero, productosDeHoja, acumula } from "../src/stock.js";
 import { crearServicioStock, stockDeEntorno } from "../src/stock-servicio.js";
 import { crearLectorHoja } from "../src/hoja.js";
 
@@ -208,3 +208,16 @@ describe("stock: columna PUNTAJE", () => {
     assert.notEqual(a.huella, b.huella);
   });
 });
+
+describe("stock: columna ACUMULA", () => {
+  it("sí / por unidad → true; no / fijo → false; vacío o ilegible → null", () => {
+    for (const v of ["SI", "Sí", "x", "por unidad", "C/U", "1", true]) assert.equal(acumula(v), true, String(v));
+    for (const v of ["No", "FIJO", "0", "por opción", false]) assert.equal(acumula(v), false, String(v));
+    for (const v of ["", "  ", "quizás", undefined]) assert.equal(acumula(v), null, String(v));
+  });
+  it("se guarda como atributo PUNTAJE_ACUMULA", () => {
+    const { productos } = productosDeHoja([["DICTIONARY", "PUNTAJE", "ACUMULA"], ["A1", "5", "sí"], ["A2", "5", "no"], ["A3", "5", ""]]);
+    assert.deepEqual(productos.map((p) => p.atributos.PUNTAJE_ACUMULA), [true, false, null]);
+  });
+});
+
